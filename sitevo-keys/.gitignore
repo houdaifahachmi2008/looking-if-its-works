@@ -1,0 +1,4 @@
+node_modules/
+out/*
+!out/sitevo-keys-intro.mp4
+!out/sitevo-keys-transition.mp4
