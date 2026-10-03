@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sitevo Keys</title>
+<style>
+@font-face{font-family:"Inter";src:url("../sitevo-intro/fonts/inter-latin-wght-normal.woff2") format("woff2");font-weight:100 900}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;background:#000;overflow:hidden}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;background:#000;font-family:Inter,sans-serif}
+#plate{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:960px 540px}
+#photo{position:absolute;left:0;top:0;width:1920px;height:1080px;display:block}
+#screen{position:absolute;left:0;top:0;width:1720px;height:800px;transform-origin:0 0;overflow:hidden;background:#03050a;color:#fff}
+#screen .arcs{position:absolute;inset:0}
+#screen .logo{position:absolute;left:58px;top:46px;display:flex;align-items:center;gap:16px;font-size:26px;font-weight:600;letter-spacing:.26em;color:#e9edf5}
+#screen .btn{position:absolute;left:50%;top:50%;width:640px;height:132px;margin:-66px 0 0 -320px;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:24px;
+  font-size:40px;font-weight:600;letter-spacing:.16em;color:#fff;background:linear-gradient(180deg,#121722,#080a10);border:2px solid rgba(110,155,255,.75)}
+#screen .btn .ripple{position:absolute;inset:-2px;border-radius:999px;border:2px solid rgba(140,175,255,.9)}
+#screen .cur{position:absolute;left:0;top:0;width:66px;height:66px}
+#screen .glass{position:absolute;inset:0;background:linear-gradient(115deg,rgba(255,255,255,.05) 0%,rgba(255,255,255,0) 32%,rgba(255,255,255,0) 62%,rgba(255,255,255,.025) 100%)}
+#spill{position:absolute;inset:0;mix-blend-mode:screen;pointer-events:none}
+#gl{position:absolute;left:0;top:0;width:1920px;height:1080px}
+#fade{position:absolute;inset:0;background:#000;pointer-events:none}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(0,0,0,0) 60%,rgba(0,0,0,.45) 100%)}
+</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js"}}</script>
+</head>
+<body>
+<div id="stage">
+  <div id="plate">
+    <img id="photo" src="office.webp">
+    <div id="screen">
+      <svg class="arcs" viewBox="0 0 1720 800" preserveAspectRatio="none">
+        <defs>
+          <radialGradient id="sg" cx="62%" cy="72%" r="70%"><stop offset="0" stop-color="#0d1a3a"/><stop offset="1" stop-color="#03050a"/></radialGradient>
+          <linearGradient id="a1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2d5bff" stop-opacity="0"/><stop offset=".55" stop-color="#5b8cff" stop-opacity=".85"/><stop offset="1" stop-color="#8fb0ff" stop-opacity=".2"/></linearGradient>
+          <filter id="gb"><feGaussianBlur stdDeviation="5"/></filter>
+        </defs>
+        <rect width="1720" height="800" fill="url(#sg)"/>
+        <path d="M0 320 C 520 360, 1050 520, 1400 800" fill="none" stroke="url(#a1)" stroke-width="10" filter="url(#gb)" opacity=".7"/>
+        <path d="M0 320 C 520 360, 1050 520, 1400 800" fill="none" stroke="url(#a1)" stroke-width="2.4"/>
+        <path d="M1060 -10 C 1200 260, 1300 520, 1360 810" fill="none" stroke="#5b8cff" stroke-opacity=".55" stroke-width="2"/>
+        <path d="M1060 -10 C 1200 260, 1300 520, 1360 810" fill="none" stroke="#3d6dff" stroke-opacity=".5" stroke-width="12" filter="url(#gb)"/>
+      </svg>
+      <div class="logo"><svg width="34" height="34" viewBox="0 0 26 26"><rect x=".5" y=".5" width="25" height="25" rx="7.5" fill="#12151d" stroke="rgba(255,255,255,.2)"/><rect x="9" y="7.6" width="10.4" height="4" rx="2" fill="#fff"/><rect x="6.6" y="14.4" width="10.4" height="4" rx="2" fill="#4f86ff"/></svg>SITEVO</div>
+      <div class="btn" id="sbtn"><div class="ripple" id="ripple"></div><span>LET'S BUILD</span><svg width="42" height="42" viewBox="0 0 16 16"><path d="M2.2 8h11.2M9.2 3.6 13.6 8l-4.4 4.4" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <svg class="cur" id="scur" viewBox="0 0 32 32"><path d="M7 4v21l5.4-5.2 3.5 8 3.6-1.6-3.5-7.8h7.6z" fill="#fff" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      <div class="glass"></div>
+    </div>
+    <div id="spill"></div>
+  </div>
+  <canvas id="gl" width="1920" height="1080"></canvas>
+  <div id="vig"></div>
+  <div id="fade"></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from './node_modules/three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { PHOTO, K, CAM_H, PITCH, DESK, DESK_Y, deskPoint, T, simTime, VARIANTS } from './geom.mjs';
+
+await document.fonts.load('600 44px Inter'); await document.fonts.load('500 26px Inter');
+const clamp=(x,a=0,b=1)=>x<a?a:x>b?b:x, lerp=(a,b,t)=>a+(b-a)*t;
+const E={inOutSine:t=>-(Math.cos(Math.PI*t)-1)/2,outCubic:t=>1-Math.pow(1-t,3),inOutCubic:t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2,outQuart:t=>1-Math.pow(1-t,4)};
+const P=(t,s,d,e=E.outCubic)=>e(clamp((t-s)/d));
+const $=id=>document.getElementById(id);
+
+/* ------------------------------------------------ plate: screen homography */
+function homography(src,dst){ // solve 8x8
+  const A=[],b=[];
+  for(let i=0;i<4;i++){const [x,y]=src[i],[u,v]=dst[i];A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v);}
+  for(let c=0;c<8;c++){let p=c;for(let r=c+1;r<8;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;[A[c],A[p]]=[A[p],A[c]];[b[c],b[p]]=[b[p],b[c]];
+    for(let r=0;r<8;r++){if(r===c)continue;const f=A[r][c]/A[c][c];for(let k=c;k<8;k++)A[r][k]-=f*A[c][k];b[r]-=f*b[c];}}
+  const h=b.map((v,i)=>v/A[i][i]);return [...h,1];
+}
+const SQ=[[947.5,381],[1429,375],[1425,609],[946,589]].map(([x,y])=>[x*K,y*K]);
+{const h=homography([[0,0],[1720,0],[1720,800],[0,800]],SQ);
+ $('screen').style.transform=`matrix3d(${h[0]},${h[3]},0,${h[6]},${h[1]},${h[4]},0,${h[7]},0,0,1,0,${h[2]},${h[5]},0,${h[8]})`;}
+
+/* ------------------------------------------------ three.js */
+const canvas=$('gl');
+const renderer=new THREE.WebGLRenderer({canvas,alpha:true,premultipliedAlpha:true,antialias:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(1); renderer.setSize(1920,1080,false);
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFShadowMap;
+renderer.setClearColor(0x000000,0);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(37,1920/1080,0.02,60);
+camera.matrixAutoUpdate=true;
+
+// environment from the photo (warm practicals + blue screen light)
+const meta=await (await fetch('out/sim.json')).json();
+const simBuf=new Float32Array(await (await fetch('out/sim.bin')).arrayBuffer());
+const photoTex=await new THREE.TextureLoader().loadAsync('office.webp');
+photoTex.colorSpace=THREE.SRGBColorSpace; photoTex.mapping=THREE.EquirectangularReflectionMapping;
+const envCv=document.createElement('canvas'); envCv.width=1024; envCv.height=512; {const g=envCv.getContext('2d'); g.filter='saturate(0.25) brightness(1.15)'; g.drawImage(photoTex.image,0,0,1024,512);}
+const envTex=new THREE.CanvasTexture(envCv); envTex.colorSpace=THREE.SRGBColorSpace; envTex.mapping=THREE.EquirectangularReflectionMapping;
+const pmrem=new THREE.PMREMGenerator(renderer);
+scene.environment=pmrem.fromEquirectangular(envTex).texture;
+scene.environmentIntensity=0.85;
+
+// lights matched to the photo
+const v3=(a)=>new THREE.Vector3(...a);
+const barPos=deskPoint(0.05,0.62); barPos[1]=1.29;
+const spot=new THREE.SpotLight(0xffc48a,9,0,0.62,0.7,2);
+spot.position.copy(v3(barPos)); spot.target.position.copy(v3(deskPoint(0.25,0.15))); scene.add(spot,spot.target);
+spot.castShadow=true; spot.shadow.mapSize.set(1024,1024); spot.shadow.camera.near=0.1; spot.shadow.camera.far=4; spot.shadow.bias=-0.0004; spot.shadow.radius=3;
+const lampPos=deskPoint(0.68,0.45); lampPos[1]=1.02;
+const lamp=new THREE.PointLight(0xffc89a,1.3,0,2); lamp.position.copy(v3(lampPos)); scene.add(lamp);
+const scrPos=deskPoint(0.1,0.58); scrPos[1]=1.02;
+const scrLight=new THREE.PointLight(0x4a7dff,2.0,0,2); scrLight.position.copy(v3(scrPos)); scene.add(scrLight);
+const towerLight=new THREE.PointLight(0x3a6cff,0.6,0,2); {const p=deskPoint(0.75,0.55);p[1]=1.0;towerLight.position.copy(v3(p));} scene.add(towerLight);
+const fillCam=new THREE.DirectionalLight(0xe8edf5,0.5); fillCam.position.set(-0.3,1.8,1.2); scene.add(fillCam);
+const winFill=new THREE.DirectionalLight(0xb7c3dc,0.12); winFill.position.set(-3,2,-1); scene.add(winFill);
+const keyTop=new THREE.DirectionalLight(0xdce4f2,0.85); keyTop.position.set(0.6,3.2,1.2); scene.add(keyTop);
+
+// shadow catcher on the desk top
+const catcher=new THREE.Mesh(new THREE.PlaneGeometry(2.6,0.7),new THREE.ShadowMaterial({opacity:0.6}));
+catcher.rotation.order='YXZ'; catcher.rotation.set(-Math.PI/2,DESK.yaw,0);
+{const c=deskPoint(0.25,0.35); catcher.position.set(c[0],DESK_Y+0.0004,c[2]);} catcher.receiveShadow=true; scene.add(catcher);
+catcher.rotation.set(0,0,0); catcher.quaternion.setFromEuler(new THREE.Euler(-Math.PI/2,0,0)).premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),DESK.yaw));
+
+/* ------------------------------------------------ keycaps */
+function keyGeom(V){
+  const g=new RoundedBoxGeometry(V.w,V.h,V.d,2,0.0017);
+  const p=g.attributes.position, n0=g.attributes.normal.array.slice(); const h2=V.h/2; const mod=new Uint8Array(p.count);
+  for(let i=0;i<p.count;i++){
+    let x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+    const f=(y+h2)/V.h;
+    x*=1-f*(0.0056/V.w); z*=1-f*(0.0052/V.d);
+    if(y>h2-0.0002){const wt=(V.w-0.0056)/2;const k=Math.min(1,(x/wt)**2);y-=0.0007*(1-k);mod[i]=1;}
+    if(y<-h2+0.0002&&Math.abs(x)<V.w/2-0.0019&&Math.abs(z)<V.d/2-0.0019){y=-h2+0.0068;mod[i]=1;}
+    p.setXYZ(i,x,y,z);
+  }
+  g.computeVertexNormals();
+  const n=g.attributes.normal.array; for(let i=0;i<p.count;i++) if(!mod[i]){n[i*3]=n0[i*3];n[i*3+1]=n0[i*3+1];n[i*3+2]=n0[i*3+2];}
+  g.attributes.normal.needsUpdate=true;
+  return g;
+}
+const geoms=VARIANTS.map(keyGeom);
+const COLS=[{base:'#22252b',leg:'rgba(222,227,236,.85)',r:.33},{base:'#34383f',leg:'rgba(222,227,236,.8)',r:.36},{base:'#1a3a9e',leg:'rgba(255,255,255,.9)',r:.34}];
+const sideMats=COLS.map(c=>new THREE.MeshStandardMaterial({color:new THREE.Color(c.base),roughness:c.r,metalness:0}));
+const botMats=COLS.map(c=>new THREE.MeshStandardMaterial({color:new THREE.Color(c.base).multiplyScalar(.55),roughness:.7}));
+const legCache={};
+function legendMat(vi,leg,col){
+  const k=vi+'|'+leg+'|'+col; if(legCache[k])return legCache[k];
+  const V=VARIANTS[vi], c=COLS[col]; const H=128, W=Math.round(H*V.w/V.d);
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const g=cv.getContext('2d');
+  g.fillStyle=c.base; g.fillRect(0,0,W,H);
+  if(leg){g.fillStyle=c.leg; const big=leg.length===1; g.font=`${big?600:500} ${big?44:26}px Inter`; g.textBaseline='middle';
+    if(big){g.textAlign='center';g.fillText(leg,W*.5,H*.47);} else {g.textAlign='left';g.fillText(leg,W*0.16,H*0.66);}}
+  const tex=new THREE.CanvasTexture(cv); tex.colorSpace=THREE.SRGBColorSpace; tex.anisotropy=4;
+  const m=new THREE.MeshStandardMaterial({map:tex,roughness:c.r,metalness:0});
+  return legCache[k]=m;
+}
+// group keys into instanced meshes
+const groups={}; const keyRef=new Array(meta.n);
+meta.keys.forEach((k,i)=>{const z=k.zone==='desk'?'d':'a';const g=k.vi+'|'+k.legend+'|'+k.col+'|'+z;(groups[g]=groups[g]||[]).push(i);});
+const meshes=[];
+for(const gk in groups){
+  const [vi,leg,col,z]=gk.split('|'); const ids=groups[gk]; const V=+vi, C=+col;
+  const mats=[sideMats[C],sideMats[C],legendMat(V,leg,C),botMats[C],sideMats[C],sideMats[C]];
+  const m=new THREE.InstancedMesh(geoms[V],mats,ids.length); m.frustumCulled=false; m.castShadow=(z==='d'); m.receiveShadow=false;
+  m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.userData.desk=(z==='d');
+  ids.forEach((id,j)=>keyRef[id]=[m,j]); scene.add(m); meshes.push(m);
+}
+const REC=meta.rate, NREC=meta.records, NK=meta.n;
+const _m=new THREE.Matrix4(), _p=new THREE.Vector3(), _q=new THREE.Quaternion(), _q2=new THREE.Quaternion(), _s1=new THREE.Vector3(1,1,1), _s0=new THREE.Vector3(0,0,0);
+function poseKeys(ts, hideDesk){
+  const x=clamp(ts*REC,0,NREC-1.001), r=Math.floor(x), f=x-r;
+  for(let i=0;i<NK;i++){
+    const [mesh,j]=keyRef[i]; const k=meta.keys[i];
+    if(ts<k.t || (hideDesk&&mesh.userData.desk)){ _m.compose(_p.set(0,-50,0),_q.identity(),_s0); mesh.setMatrixAt(j,_m); continue; }
+    const a=(r*NK+i)*7, b=((r+1)*NK+i)*7, d=simBuf;
+    _p.set(lerp(d[a],d[b],f),lerp(d[a+1],d[b+1],f),lerp(d[a+2],d[b+2],f));
+    _q.set(d[a+3],d[a+4],d[a+5],d[a+6]); _q2.set(d[b+3],d[b+4],d[b+5],d[b+6]); _q.slerp(_q2,f);
+    _m.compose(_p,_q,_s1); mesh.setMatrixAt(j,_m);
+  }
+  meshes.forEach(m=>m.instanceMatrix.needsUpdate=true);
+}
+
+/* ------------------------------------------------ accumulation (motion blur + DOF + AA) */
+const rtOpts={type:THREE.HalfFloatType,format:THREE.RGBAFormat,depthBuffer:true,minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter};
+const sampleRT=new THREE.WebGLRenderTarget(1920,1080,rtOpts);
+const accA=new THREE.WebGLRenderTarget(1920,1080,{...rtOpts,type:THREE.FloatType,depthBuffer:false}), accB=accA.clone();
+const quadCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const vs=`varying vec2 vUv; void main(){vUv=uv; gl_Position=vec4(position.xy,0.,1.);}`;
+const accMat=new THREE.ShaderMaterial({uniforms:{tPrev:{value:null},tS:{value:null},w:{value:1}},vertexShader:vs,
+  fragmentShader:`uniform sampler2D tPrev,tS; uniform float w; varying vec2 vUv; void main(){gl_FragColor=mix(texture2D(tPrev,vUv),texture2D(tS,vUv),w);}`,depthTest:false,depthWrite:false});
+const outMat=new THREE.ShaderMaterial({uniforms:{tA:{value:null},exposure:{value:1}},vertexShader:vs,
+  fragmentShader:`uniform sampler2D tA; uniform float exposure; varying vec2 vUv;
+  vec3 aces(vec3 x){const float a=2.51,b=.03,c=2.43,d=.59,e=.14;return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.,1.);}
+  vec3 srgb(vec3 c){return mix(c*12.92,1.055*pow(c,vec3(1./2.4))-.055,step(.0031308,c));}
+  void main(){vec4 a=texture2D(tA,vUv); float al=clamp(a.a,0.,1.); vec3 c=al>1e-4?a.rgb/a.a:vec3(0.); c=srgb(aces(c*exposure)); gl_FragColor=vec4(c*al,al);}`,
+  depthTest:false,depthWrite:false,transparent:false});
+const quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),accMat); const qScene=new THREE.Scene(); qScene.add(quad);
+
+/* ------------------------------------------------ camera model (matches the 2D plate move) */
+let seed=7; const rnd=()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+function plateMove(t){
+  const s=1.022+0.07*E.inOutSine(clamp(t/9));
+  const dx=4.2*Math.sin(t*.63+.4)+1.6*Math.sin(t*1.71+2.1), dy=2.6*Math.sin(t*.83+1.3)+1.1*Math.sin(t*2.17+.2);
+  return {s,dx,dy};
+}
+const APERTURE=0.0026;
+const rack=t=>P(t,3.25,.55,E.inOutCubic)*(1-P(t,5.0,.6,E.inOutCubic));
+const focusAt=t=>1/lerp(1/1.9,1/0.52,rack(t));
+let FOCUS=1.9;
+function setCamera(t, jx, jy, ax, ay){
+  const {s,dx,dy}=plateMove(t); FOCUS=focusAt(t);
+  const n=camera.near, f=PHOTO.f, X=(o)=>(960+(o-960-dx-jx)/s)/K, Y=(o)=>(540+(o-540-dy-jy)/s)/K;
+  let left=n*(X(0)-PHOTO.cx)/f, right=n*(X(1920)-PHOTO.cx)/f, top=-n*(Y(0)-PHOTO.cy)/f, bottom=-n*(Y(1080)-PHOTO.cy)/f;
+  left-=ax*n/FOCUS; right-=ax*n/FOCUS; top-=ay*n/FOCUS; bottom-=ay*n/FOCUS;
+  camera.position.set(0,CAM_H,0); camera.rotation.set(PITCH,0,0);
+  camera.updateMatrixWorld(true);
+  camera.position.add(new THREE.Vector3(ax,ay,0).applyQuaternion(camera.quaternion)); camera.updateMatrixWorld(true);
+  camera.projectionMatrix.makePerspective(left,right,top,bottom,n,camera.far); camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+}
+
+/* ------------------------------------------------ frame */
+const FPS=60, SHUTTER=0.5/FPS;
+function samplesFor(t){ if(window.SAMPLES) return window.SAMPLES; if(t<T.SIM0+0.04) return 1; if(t>7.55&&t<8.75) return 16; return 22; }
+function renderKeys(t){
+  const N=samplesFor(t); const hideDesk=t>=T.SWAP;
+  catcher.visible=!hideDesk;
+  scrLight.intensity=1.1+2.0*P(t,T.CLICK,.25)*(1-.35*P(t,T.CLICK+.3,1.2));
+  let prev=accA, cur=accB;
+  for(let i=0;i<N;i++){
+    // stratified shutter + aperture + sub-pixel jitter
+    const u=(i+rnd())/N, tv=t-SHUTTER/2+u*SHUTTER;
+    const ang=rnd()*Math.PI*2, rr=Math.sqrt((i+.5)/N)*APERTURE;
+    setCamera(tv, rnd()-.5, rnd()-.5, N>1?Math.cos(ang)*rr:0, N>1?Math.sin(ang)*rr:0);
+    poseKeys(simTime(tv), hideDesk);
+    renderer.setRenderTarget(sampleRT); renderer.setClearColor(0,0); renderer.clear(); renderer.render(scene,camera);
+    quad.material=accMat; accMat.uniforms.tPrev.value=prev.texture; accMat.uniforms.tS.value=sampleRT.texture; accMat.uniforms.w.value=1/(i+1);
+    renderer.setRenderTarget(cur); renderer.render(qScene,quadCam);
+    [prev,cur]=[cur,prev];
+  }
+  quad.material=outMat; outMat.uniforms.tA.value=prev.texture; outMat.uniforms.exposure.value=1.4;
+  renderer.setRenderTarget(null); renderer.setClearColor(0,0); renderer.clear(); renderer.render(qScene,quadCam);
+  lastAcc=prev;
+}
+let lastAcc=null;
+
+/* ------------------------------------------------ 2D plate + screen animation */
+const scur=$('scur'), sbtn=$('sbtn'), ripple=$('ripple'), spill=$('spill');
+function renderPlate(t){
+  const {s,dx,dy}=plateMove(t);
+  $('plate').style.transform=`translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${s.toFixed(4)})`;
+  $('plate').style.visibility=t<T.SWAP?'visible':'hidden';
+  const pb=4.2*rack(t); $('plate').style.filter=pb>.05?`blur(${pb.toFixed(2)}px)`:'none';
+  $('fade').style.opacity=(1-P(t,0,1.1,E.inOutSine)).toFixed(3);
+  // cursor on screen: enters, glides to the button, clicks
+  const a=P(t,1.05,1.6,E.inOutCubic); const cx=lerp(1290,905,a)+30*Math.sin(Math.PI*a), cy=lerp(650,418,a);
+  const press=t>=T.CLICK&&t<T.CLICK+.12?.86:1;
+  scur.style.transform=`translate(${cx-14}px,${cy-8}px) scale(${press})`; scur.style.transformOrigin='14px 8px';
+  scur.style.opacity=(P(t,.95,.3)*(1-P(t,T.CLICK+.6,.5))).toFixed(3);
+  const hov=P(t,2.45,.35,E.inOutSine), clk=P(t,T.CLICK,.08)*(1-P(t,T.CLICK+.15,.9));
+  sbtn.style.borderColor=`rgba(${lerp(110,170,hov)|0},${lerp(155,195,hov)|0},255,${lerp(.7,1,hov).toFixed(2)})`;
+  sbtn.style.boxShadow=`0 0 ${lerp(40,80,hov)+90*clk}px rgba(61,123,255,${(lerp(.35,.6,hov)+.4*clk).toFixed(2)}), inset 0 0 ${30+60*clk}px rgba(91,140,255,${(.08+.35*clk).toFixed(2)})`;
+  sbtn.style.transform=`scale(${(t>=T.CLICK&&t<T.CLICK+.12?.975:1)})`;
+  const rp=P(t,T.CLICK,.9,E.outCubic); ripple.style.transform=`scale(${(1+rp*.35).toFixed(3)},${(1+rp*1.1).toFixed(3)})`; ripple.style.opacity=(t>=T.CLICK?(1-rp)*.9:0).toFixed(3);
+  // light spill from the screen onto desk / wall
+  const sp=.18+.55*P(t,T.CLICK,.2)*(1-.45*P(t,T.CLICK+.25,1.4));
+  const c=[1188*K,560*K];
+  spill.style.background=`radial-gradient(ellipse 420px 210px at ${c[0]}px ${c[1]+150}px, rgba(50,95,255,${(sp*.22).toFixed(3)}), rgba(50,95,255,0) 70%), radial-gradient(ellipse 520px 300px at ${c[0]}px ${c[1]-60}px, rgba(50,95,255,${(sp*.12).toFixed(3)}), rgba(50,95,255,0) 70%)`;
+}
+
+function renderAt(t){ renderPlate(t); renderKeys(t); }
+window.renderAt=renderAt;
+window.coverage=()=>{ // mean alpha of the last accumulated frame (downsampled)
+  const w=1920,h=1080,buf=new Float32Array(4*64*36); let s=0;
+  // sample a grid
+  const px=new Float32Array(4);
+  for(let y=0;y<36;y++)for(let x=0;x<64;x++){renderer.readRenderTargetPixels(lastAcc,Math.floor((x+.5)*w/64),Math.floor((y+.5)*h/36),1,1,px);s+=Math.min(1,px[3]);}
+  return s/(64*36);
+};
+await document.fonts.load('600 40px Inter');
+renderAt(0);
+window.__ready=true;
+const params=new URLSearchParams(location.search);
+if(params.has('t')) renderAt(parseFloat(params.get('t')));
+</script>
+</body>
+</html>
