@@ -22,6 +22,13 @@ In de app vind je:
 - **Zoeken:** gemeenten en sectoren aanklikken, websites controleren, mails laten schrijven.
 - **Bedrijven:** de volledige lijst met filters. Klik op een bedrijf voor alle details.
 - **Mails nakijken:** elke mail lezen, aanpassen, opnieuw laten schrijven en goedkeuren.
+- **Sjablonen:** schrijf je eigen mails, in het Nederlands en het Frans, met een live voorbeeld. Er zijn drie soorten,
+  en de app kiest automatisch de juiste:
+  - **Geen website:** het bedrijf heeft geen eigen site (of enkel Facebook/Instagram), maar we vonden wel een e-mailadres.
+  - **Slechte website:** de site is verouderd, onveilig, niet gsm-vriendelijk of werkt niet.
+  - **Website kan beter:** de site is degelijk, maar er zijn nog verbeterpunten.
+
+  Gebruik plaatshouders zoals `{bedrijf}`, `{gemeente}`, `{sector}` en `{problemen}`. Die worden per bedrijf ingevuld.
 - **Versturen:** eerst testen, dan echt versturen, met de wachtrij en een live verloop.
 - **Afmeldlijst** en **Instellingen**, met knoppen voor Outlook en Gmail en een verbindingstest.
 
@@ -84,6 +91,18 @@ het nakijken:
 
 Wil je volledig automatisch versturen, voeg dan `python -m leadgen keur-alles && python -m leadgen verstuur --echt`
 toe. Dat stuurt alleen naar algemene adressen (info@, contact@, ...) en houdt de daglimiet aan.
+
+## Hoe e-mailadressen gevonden worden
+
+1. **Kaartgegevens:** het adres uit OpenStreetMap, als het bedrijf er een heeft ingevuld.
+2. **De eigen website:** de app doorzoekt tot 7 pagina's per site (start, contact, over ons, privacy, colofon, …).
+   Ze ontcijfert ook adressen die tegen spam verstopt zijn, zoals Cloudflare-beveiliging,
+   `info [at] bedrijf [dot] be` en HTML-codes.
+3. **Website opsporen:** staat er geen website in de kaartgegevens, dan raadt de app de domeinnaam
+   (bv. `bakkerijpeeters.be`). Ze gebruikt die site enkel als de naam van het bedrijf én de gemeente,
+   postcode of het telefoonnummer erop staan.
+
+Met **Opnieuw zoeken naar e-mails** (stap 2) doorzoek je bedrijven die al gecontroleerd zijn maar nog geen adres hebben.
 
 ## Wettelijk (belangrijk!)
 

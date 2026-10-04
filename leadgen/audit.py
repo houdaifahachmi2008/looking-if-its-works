@@ -3,16 +3,15 @@ import datetime as dt
 import json
 import re
 import time
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
-from . import config, db
-from .emails import classify_email, extract_emails
+from . import config, contacts, db
+from .emails import classify_email
 
 SOCIAL_HOSTS = ("facebook.com", "instagram.com", "linktr.ee", "business.site", "tiktok.com")
-CONTACT_WORDS = ("contact", "over-ons", "about", "a-propos", "nous-contacter", "impressum")
 
 
 def _get(url: str, timeout: int = 15):
@@ -74,47 +73,86 @@ def audit_site(url: str) -> dict:
     if not soup.find("meta", attrs={"name": re.compile("description", re.I)}):
         issues.append("geen meta-beschrijving (slecht voor Google)")
         score += 5
+    if not soup.find("h1"):
+        issues.append("geen duidelijke hoofdtitel op de startpagina")
+        score += 5
+    if not soup.find("a", href=re.compile(r"^tel:", re.I)):
+        issues.append("telefoonnummer is niet aanklikbaar op gsm")
+        score += 5
     if len(text) < 300:
         issues.append("heel weinig inhoud op de homepage")
         score += 10
 
-    domain = host.removeprefix("www.")
-    emails = extract_emails(html, domain)
-    for a in soup.find_all("a", href=True):
-        if a["href"].startswith("mailto:"):
-            emails = extract_emails(a["href"][7:], domain) + emails
-    if not emails:  # probeer de contactpagina
-        for a in soup.find_all("a", href=True):
-            if any(w in a["href"].lower() for w in CONTACT_WORDS):
-                try:
-                    emails = extract_emails(_get(urljoin(r.url, a["href"]), 10).text, domain)
-                except requests.RequestException:
-                    pass
-                break
+    emails = contacts.find_emails(r.url, html)
 
-    situation = "outdated" if score >= 30 else "ok"
-    return {"situation": situation, "issues": issues, "score": min(score, 100), "emails": list(dict.fromkeys(emails))}
+    # outdated = slechte site, improvable = degelijke site die beter kan, ok = niets gevonden
+    situation = "outdated" if score >= 30 else ("improvable" if issues else "ok")
+    return {"situation": situation, "issues": issues, "score": min(score, 100), "emails": emails, "url": r.url}
 
 
-def run(limit: int = 50, stop=None) -> int:
+NO_SITE = {"situation": "no_website", "issues": ["geen website gevonden"], "score": 100, "emails": []}
+
+
+def _check(row, discover: bool = True) -> tuple[dict, str | None]:
+    """Controleer één bedrijf. Geeft (resultaat, website) terug; zoekt zo nodig zelf de website."""
+    website = row["website"]
+    res = audit_site(website) if website else dict(NO_SITE)
+    if discover and res["situation"] in ("no_website", "facebook_only"):
+        found = contacts.discover_website(row["name"], row["city"], row["postcode"], row["phone"])
+        if found:
+            print(f"    🔎 eigen website gevonden: {found[0]}")
+            website = found[0]
+            res = audit_site(website)
+    return res, website
+
+
+def _best_email(row, found: list[str]) -> tuple[str | None, str | None]:
+    email, kind = row["email"], row["email_kind"]
+    for cand in found:
+        cand_kind = classify_email(cand, row["name"])
+        if not email or (kind != "generic" and cand_kind == "generic"):
+            return cand, cand_kind
+    return email, kind
+
+
+def _save(conn, row, res, website, set_status: bool = True):
+    email, kind = _best_email(row, res["emails"])
+    conn.execute(
+        "UPDATE leads SET situation=?, issues=?, score=?, email=?, email_kind=?, website=?"
+        + (", status='audited'" if set_status else "") + " WHERE id=?",
+        (res["situation"], json.dumps(res["issues"], ensure_ascii=False), res["score"], email, kind, website, row["id"]),
+    )
+    conn.commit()
+    print(f"  {row['name'][:40]:40} {res['situation']:14} score {res['score']:3}  {email or '-'}")
+    return email
+
+
+def run(limit: int = 50, stop=None, discover: bool = True) -> int:
     with db.connect() as conn:
         rows = conn.execute("SELECT * FROM leads WHERE status='new' LIMIT ?", (limit,)).fetchall()
         for row in rows:
             if stop and stop.is_set():
                 break
-            if row["website"]:
-                res = audit_site(row["website"])
-            else:
-                res = {"situation": "no_website", "issues": ["geen website gevonden"], "score": 100, "emails": []}
-            email, kind = row["email"], row["email_kind"]
-            if not email and res["emails"]:
-                email = res["emails"][0]
-                kind = classify_email(email, row["name"])
-            conn.execute(
-                "UPDATE leads SET situation=?, issues=?, score=?, email=?, email_kind=?, status='audited' WHERE id=?",
-                (res["situation"], json.dumps(res["issues"], ensure_ascii=False), res["score"], email, kind, row["id"]),
-            )
-            conn.commit()
-            print(f"  {row['name'][:40]:40} {res['situation']:14} score {res['score']:3}  {email or '-'}")
+            res, website = _check(row, discover)
+            _save(conn, row, res, website)
             time.sleep(1)  # beleefd blijven tegenover andermans servers
     return len(rows)
+
+
+def rescan(limit: int = 200, stop=None) -> int:
+    """Zoek opnieuw naar e-mails bij al gecontroleerde bedrijven waar we er nog geen vonden."""
+    found = 0
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM leads WHERE status='audited' AND email IS NULL ORDER BY score DESC LIMIT ?", (limit,)
+        ).fetchall()
+        print(f"{len(rows)} bedrijven zonder e-mailadres worden opnieuw doorzocht ...")
+        for row in rows:
+            if stop and stop.is_set():
+                break
+            res, website = _check(row, discover=True)
+            if _save(conn, row, res, website, set_status=False):
+                found += 1
+            time.sleep(1)
+    print(f"Nieuwe e-mailadressen gevonden: {found}")
+    return found

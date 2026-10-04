@@ -128,8 +128,8 @@ def main():
     s.add_argument("--limiet", type=int, default=100)
     s.set_defaults(f=cmd_controleer)
 
-    s = sub.add_parser("schrijf", help="persoonlijke mails opstellen")
-    s.add_argument("--min-score", type=int, default=30)
+    s = sub.add_parser("schrijf", help="mails opstellen volgens je sjablonen")
+    s.add_argument("--min-score", type=int, default=0)
     s.add_argument("--limiet", type=int, default=50)
     s.set_defaults(f=cmd_schrijf)
 

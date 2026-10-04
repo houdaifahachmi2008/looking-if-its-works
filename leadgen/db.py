@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS leads (
     website       TEXT,
     facebook      TEXT,
     lang          TEXT,          -- nl | fr
-    situation     TEXT,          -- no_website | facebook_only | outdated | ok | unreachable
+    situation     TEXT,          -- no_website | facebook_only | outdated | improvable | ok | unreachable
     issues        TEXT,          -- JSON-lijst met gevonden problemen
     score         INTEGER,       -- 0-100: hoe sterk heeft dit bedrijf een nieuwe site nodig
     status        TEXT NOT NULL DEFAULT 'new',  -- new | audited | drafted | approved | sent | skipped
@@ -26,6 +26,14 @@ CREATE TABLE IF NOT EXISTS leads (
     body          TEXT,
     sent_at       TEXT,
     created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS templates (
+    type       TEXT NOT NULL,     -- no_website | bad_website | could_be_better
+    lang       TEXT NOT NULL,     -- nl | fr
+    subject    TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (type, lang)
 );
 CREATE TABLE IF NOT EXISTS suppression (
     value      TEXT PRIMARY KEY,  -- e-mailadres of @domein

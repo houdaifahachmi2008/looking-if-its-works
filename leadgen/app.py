@@ -23,7 +23,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 SETTINGS_FIELDS = [
     "SENDER_NAME", "SENDER_COMPANY", "SENDER_EMAIL", "SENDER_PHONE", "SENDER_WEBSITE",
     "SENDER_VAT", "SENDER_ADDRESS", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
-    "ANTHROPIC_API_KEY", "MAX_EMAILS_PER_DAY", "SECONDS_BETWEEN_EMAILS",
+    "ANTHROPIC_API_KEY", "WRITER_MODE", "MAX_EMAILS_PER_DAY", "SECONDS_BETWEEN_EMAILS",
 ]
 SECRET_FIELDS = {"SMTP_PASSWORD", "ANTHROPIC_API_KEY"}
 
@@ -33,12 +33,20 @@ SECRET_FIELDS = {"SMTP_PASSWORD", "ANTHROPIC_API_KEY"}
 class _LogWriter(io.TextIOBase):
     def __init__(self, job):
         self.job = job
+        self.buf = ""
 
     def write(self, s):
-        for line in s.splitlines():
+        self.buf += s
+        *lines, self.buf = self.buf.split("\n")
+        for line in lines:
             if line.strip():
                 self.job["log"].append(line.rstrip())
         return len(s)
+
+    def flush(self):
+        if self.buf.strip():
+            self.job["log"].append(self.buf.rstrip())
+        self.buf = ""
 
 
 JOB = {"running": False, "name": None, "log": [], "started": None, "finished": None}
@@ -54,7 +62,8 @@ def start_job(name: str, fn) -> bool:
         JOB.update(running=True, name=name, log=[], started=time.time(), finished=None)
 
     def runner():
-        with contextlib.redirect_stdout(_LogWriter(JOB)):
+        out = _LogWriter(JOB)
+        with contextlib.redirect_stdout(out):
             try:
                 fn()
                 print("✓ Klaar." if not STOP.is_set() else "■ Gestopt.")
@@ -62,6 +71,7 @@ def start_job(name: str, fn) -> bool:
                 print(f"⚠ {e}")
             except Exception as e:  # toon fouten in de app i.p.v. te crashen
                 print(f"⚠ Fout: {type(e).__name__}: {e}")
+        out.flush()
         JOB.update(running=False, finished=time.time())
 
     threading.Thread(target=runner, daemon=True).start()
@@ -102,6 +112,7 @@ def stats() -> dict:
         return {
             "total": q("SELECT COUNT(*) FROM leads"),
             "with_email": q("SELECT COUNT(*) FROM leads WHERE email IS NOT NULL"),
+            "missing_email": q("SELECT COUNT(*) FROM leads WHERE status='audited' AND email IS NULL"),
             "hot": q("SELECT COUNT(*) FROM leads WHERE score >= 60"),
             "by_status": by_status,
             "by_situation": by_situation,
@@ -111,14 +122,61 @@ def stats() -> dict:
             "recent": recent,
             "per_day": per_day,
             "suppressed": q("SELECT COUNT(*) FROM suppression"),
-            "claude": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "claude": writer.use_claude_default(),
+            "has_api_key": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "ready_by_type": {t: n for t, n in _ready_counts(conn).items()},
             "settings_ok": all(getattr(config.sender(), k) for k in ("name", "email", "phone")),
             "smtp_ok": bool(config.SMTP_HOST and config.SMTP_USER and config.SMTP_PASSWORD),
         }
 
 
+def _ready_counts(conn) -> dict:
+    counts = {t: 0 for t in writer.TYPES}
+    for lead in writer.ready_leads(conn):
+        counts[writer.template_type(lead)] += 1
+    return counts
+
+
+def templates_payload() -> dict:
+    with db.connect() as conn:
+        ready = _ready_counts(conn)
+        tpls = {t: {lang: writer.get_template(conn, t, lang) for lang in ("nl", "fr")} for t in writer.TYPES}
+    return {
+        "types": [{"key": k, **v, "ready": ready[k]} for k, v in writer.TYPES.items()],
+        "templates": tpls,
+        "placeholders": writer.PLACEHOLDERS,
+    }
+
+
+SAMPLE_LEADS = {
+    "no_website": {"name": "Bakkerij Janssens", "category": "bakker", "city": "Gent", "situation": "no_website",
+                   "issues": '["geen website gevonden"]', "website": None},
+    "bad_website": {"name": "Kapsalon Lisa", "category": "kapper", "city": "Aalst", "situation": "outdated",
+                    "issues": json.dumps(["geen beveiligde verbinding (https)",
+                                          "niet geoptimaliseerd voor gsm (geen responsive design)",
+                                          "copyright-vermelding staat nog op 2016 (site lijkt niet onderhouden)"]),
+                    "website": "http://kapsalonlisa.be"},
+    "could_be_better": {"name": "Garage Claes", "category": "garage", "city": "Mechelen", "situation": "improvable",
+                        "issues": json.dumps(["geen meta-beschrijving (slecht voor Google)",
+                                              "telefoonnummer is niet aanklikbaar op gsm"]),
+                        "website": "https://garageclaes.be"},
+}
+
+
+def preview_template(d: dict) -> dict:
+    ttype, lang = d.get("type"), d.get("lang", "nl")
+    if ttype not in writer.TYPES:
+        return {"error": "Onbekend type"}
+    with db.connect() as conn:
+        real = [l for l in conn.execute("SELECT * FROM leads WHERE situation IS NOT NULL ORDER BY score DESC LIMIT 500")
+                if writer.template_type(l) == ttype and (l["lang"] or "nl") == lang]
+    lead = dict(real[0]) if real else {**SAMPLE_LEADS[ttype], "lang": lang}
+    subject, body = writer.render(lead, {"subject": d.get("subject", ""), "body": d.get("body", "")})
+    return {"subject": subject, "body": body + writer.footer(lang), "example": lead["name"], "real": bool(real)}
+
+
 def list_leads(params: dict) -> list[dict]:
-    sql = ("SELECT id, name, category, city, postcode, phone, email, email_kind, website, situation, score, "
+    sql = ("SELECT id, name, category, city, postcode, phone, email, email_kind, website, situation, issues, score, "
            "status, subject, sent_at FROM leads WHERE 1=1")
     args = []
     for field in ("status", "situation", "category"):
@@ -132,7 +190,13 @@ def list_leads(params: dict) -> list[dict]:
         sql += " AND email IS NOT NULL"
     sql += " ORDER BY score DESC, name LIMIT 2000"
     with db.connect() as conn:
-        return [dict(r) for r in conn.execute(sql, args)]
+        rows = []
+        for r in conn.execute(sql, args):
+            d = dict(r)
+            d["mail_type"] = writer.template_type(r) if r["situation"] else None
+            del d["issues"]
+            rows.append(d)
+        return rows
 
 
 def get_lead(lead_id: int) -> dict | None:
@@ -141,6 +205,7 @@ def get_lead(lead_id: int) -> dict | None:
         if not r:
             return None
         d = dict(r)
+        d["mail_type"] = writer.template_type(r) if r["situation"] else None
         d["issues"] = json.loads(d["issues"] or "[]")
         d["suppressed"] = bool(d["email"]) and db.is_suppressed(conn, d["email"])
         return d
@@ -229,8 +294,7 @@ def test_smtp() -> dict:
 def send_test_mail(to: str) -> dict:
     """Stuurt één voorbeeldmail naar jezelf om te zien hoe het eruitziet."""
     from email.message import EmailMessage
-    lead = {"name": "Voorbeeldzaak", "category": "kapper", "city": "Gent", "situation": "no_website",
-            "issues": "[]", "lang": "nl"}
+    lead = {**SAMPLE_LEADS["no_website"], "lang": "nl"}
     subject, body = writer._template(lead)
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = config.SMTP_USER, to, "[TEST] " + subject
@@ -299,6 +363,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200 if lead else 404, lead or {"error": "Niet gevonden"})
         if path == "/api/job":
             return self._send(200, JOB)
+        if path == "/api/templates":
+            return self._send(200, templates_payload())
         if path == "/api/categories":
             return self._send(200, list(finder.CATEGORIES))
         if path == "/api/settings":
@@ -329,9 +395,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/jobs/audit":
             ok = start_job("Websites controleren", lambda: audit.run(int(d.get("limit", 100)), STOP))
             return self._send(200 if ok else 409, {"ok": True} if ok else busy)
+        if path == "/api/jobs/rescan":
+            ok = start_job("E-mails zoeken", lambda: audit.rescan(int(d.get("limit", 200)), STOP))
+            return self._send(200 if ok else 409, {"ok": True} if ok else busy)
         if path == "/api/jobs/write":
+            types = [t for t in d.get("types", list(writer.TYPES)) if t in writer.TYPES]
+            if not types:
+                return self._send(400, {"error": "Kies minstens één soort mail."})
             ok = start_job("Mails schrijven",
-                           lambda: writer.run(int(d.get("min_score", 30)), int(d.get("limit", 50)), STOP))
+                           lambda: writer.run(int(d.get("min_score", 0)), int(d.get("limit", 50)), STOP, types))
             return self._send(200 if ok else 409, {"ok": True} if ok else busy)
         if path == "/api/jobs/send":
             real = bool(d.get("real"))
@@ -354,6 +426,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, save_settings(d))
         if path == "/api/settings/test-smtp":
             return self._send(200, test_smtp())
+        if path == "/api/templates":
+            ttype, lang = d.get("type"), d.get("lang")
+            if ttype not in writer.TYPES or lang not in ("nl", "fr"):
+                return self._send(400, {"error": "Onbekend sjabloon"})
+            if not (d.get("subject") or "").strip() or not (d.get("body") or "").strip():
+                return self._send(400, {"error": "Onderwerp en bericht mogen niet leeg zijn."})
+            with db.connect() as conn:
+                writer.save_template(conn, ttype, lang, d["subject"], d["body"])
+            return self._send(200, templates_payload())
+        if path == "/api/templates/reset":
+            with db.connect() as conn:
+                writer.reset_template(conn, d.get("type"), d.get("lang"))
+            return self._send(200, templates_payload())
+        if path == "/api/templates/preview":
+            res = preview_template(d)
+            return self._send(400 if "error" in res else 200, res)
+        if path == "/api/templates/apply":
+            if d.get("type") not in writer.TYPES:
+                return self._send(400, {"error": "Onbekend type"})
+            return self._send(200, {"ok": True, "count": writer.reapply(d["type"])})
         if path == "/api/settings/test-mail":
             return self._send(200, send_test_mail(d.get("to") or config.SMTP_USER))
         if path == "/api/suppression":

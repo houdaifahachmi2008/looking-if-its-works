@@ -207,6 +207,22 @@ dialog::backdrop { background: rgba(8,10,20,.45); }
 .checklist li { margin: 6px 0; }
 .ok-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 
+/* sjablonen */
+.ttabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+@media (max-width: 1000px) { .ttabs { grid-template-columns: 1fr; } }
+.ttab { text-align: left; cursor: pointer; border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+.ttab:hover { border-color: var(--accent); }
+.ttab.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ttab .tt { font-weight: 700; display: flex; gap: 8px; align-items: center; }
+.ttab .td { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { border: 0; background: var(--panel); padding: 6px 14px; cursor: pointer; font-weight: 600; color: var(--muted); }
+.seg button.on { background: var(--accent); color: var(--accent-text); }
+.ph { font-family: Consolas, ui-monospace, monospace; font-size: 12px; }
+.check { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; cursor: pointer; background: var(--panel-2); }
+.check input { margin-top: 3px; }
+.check .cnt { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+
 @media (max-width: 760px) {
   body { grid-template-columns: 1fr; }
   aside { position: static; height: auto; flex-direction: row; overflow-x: auto; padding: 8px; }
@@ -232,6 +248,7 @@ dialog::backdrop { background: rgba(8,10,20,.45); }
     <button data-page="leads"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V8l6-4 6 4v13"/><path d="M15 21V11h6v10"/><path d="M7 12h4M7 16h4"/></svg>Bedrijven <span class="count" id="c-leads">0</span></button>
     <button data-page="nakijken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>Mails nakijken <span class="count" id="c-drafted">0</span></button>
     <button data-page="versturen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>Versturen <span class="count" id="c-approved">0</span></button>
+    <button data-page="sjablonen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>Sjablonen</button>
     <button data-page="afmeld"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m5.7 5.7 12.6 12.6"/></svg>Afmeldlijst</button>
     <button data-page="instellingen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>Instellingen</button>
   </nav>
@@ -283,16 +300,19 @@ dialog::backdrop { background: rgba(8,10,20,.45); }
       </div>
       <div class="card">
         <div class="row" style="margin-bottom:10px"><span class="stepno">2</span><h2 style="margin:0">Websites controleren</h2></div>
-        <p class="sub" style="margin:0 0 14px">Kijkt bij elk nieuw bedrijf of er een website is, of die werkt op gsm, beveiligd is en up-to-date. Zoekt ook het e-mailadres op.</p>
+        <p class="sub" style="margin:0 0 14px">Beoordeelt de website van elk nieuw bedrijf en zoekt het e-mailadres op meerdere pagina's (contact, over ons, privacy, …). Heeft een bedrijf geen website in de kaartgegevens, dan probeert de app hun eigen site zelf te vinden.</p>
         <label class="field"><span>Hoeveel bedrijven per keer</span><input type="number" id="audit-limit" value="100" min="1" max="1000"></label>
         <p class="sub" id="audit-pending" style="margin:0 0 14px"></p>
-        <button class="btn primary" id="btn-audit">Start controle</button>
+        <div class="row"><button class="btn primary" id="btn-audit">Start controle</button><button class="btn" id="btn-rescan">Opnieuw zoeken naar e-mails</button></div>
+        <p class="sub" id="rescan-info" style="font-size:12px;margin:10px 0 0"></p>
       </div>
       <div class="card">
         <div class="row" style="margin-bottom:10px"><span class="stepno">3</span><h2 style="margin:0">Mails opstellen</h2></div>
         <p class="sub" style="margin:0 0 14px" id="writer-mode"></p>
-        <label class="field"><span>Minimale score: <b id="score-val">30</b></span><input type="range" id="min-score" min="0" max="100" step="5" value="30" style="width:100%"></label>
-        <label class="field"><span>Maximum aantal mails</span><input type="number" id="write-limit" value="50" min="1" max="500"></label>
+        <label class="field"><span>Welke soorten mails?</span></label>
+        <div id="write-types"></div>
+        <label class="field" style="margin-top:6px"><span>Maximum aantal mails</span><input type="number" id="write-limit" value="50" min="1" max="500"></label>
+        <p class="sub" style="font-size:12px;margin:-4px 0 12px">De teksten pas je aan bij <a href="#" data-goto="sjablonen">Sjablonen</a>.</p>
         <button class="btn primary" id="btn-write">Mails schrijven</button>
       </div>
     </div>
@@ -352,6 +372,36 @@ dialog::backdrop { background: rgba(8,10,20,.45); }
     </div>
     <div class="card" style="margin-bottom:16px"><h2>Wachtrij</h2><div id="queue"></div></div>
     <div class="card"><h2>Verloop</h2><div class="log" id="log2">Nog niets verstuurd in deze sessie.</div></div>
+  </section>
+
+  <!-- ======================= SJABLONEN ======================= -->
+  <section class="page" id="p-sjablonen">
+    <div class="page-head">
+      <div><h1>Sjablonen</h1><p class="sub">Schrijf je eigen mails. De app kiest bij elk bedrijf automatisch het juiste sjabloon.</p></div>
+      <div class="seg" id="tpl-lang"><button data-lang="nl" class="on">Nederlands</button><button data-lang="fr">Français</button></div>
+    </div>
+    <div class="ttabs" id="tpl-tabs"></div>
+    <div class="grid two">
+      <div class="card">
+        <div class="row" style="margin-bottom:12px"><h2 style="margin:0" id="tpl-title">Sjabloon</h2><span class="spacer"></span><span class="badge b-mute" id="tpl-state"></span></div>
+        <label class="field"><span>Onderwerp</span><input type="text" id="tpl-subject"></label>
+        <label class="field"><span>Bericht</span><textarea id="tpl-body" rows="22"></textarea></label>
+        <label class="field" style="margin-bottom:6px"><span>Invoegen (klik om op de plaats van je cursor te zetten)</span></label>
+        <div class="chips" id="tpl-ph" style="margin-bottom:16px"></div>
+        <div class="row">
+          <button class="btn primary" id="tpl-save">Opslaan</button>
+          <button class="btn" id="tpl-reset">Standaardtekst terugzetten</button>
+          <span class="spacer"></span>
+          <button class="btn" id="tpl-apply" title="Mails die al klaarstaan om na te kijken opnieuw opmaken met dit sjabloon">Klaarstaande mails bijwerken</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row" style="margin-bottom:12px"><h2 style="margin:0">Voorbeeld</h2><span class="spacer"></span><span class="sub" id="tpl-example" style="font-size:12px"></span></div>
+        <p style="margin:0 0 8px"><b id="tpl-prev-subject"></b></p>
+        <pre class="mail" id="tpl-prev-body"></pre>
+        <p class="sub" style="font-size:12px;margin-top:10px">Je naam, contactgegevens en de afmeldzin worden altijd automatisch onderaan toegevoegd.</p>
+      </div>
+    </div>
   </section>
 
   <!-- ======================= AFMELDLIJST ======================= -->
@@ -420,7 +470,9 @@ dialog::backdrop { background: rgba(8,10,20,.45); }
         </div>
         <div class="card">
           <h2>Claude (optioneel)</h2>
-          <p class="sub" style="margin:0 0 12px">Met een sleutel schrijft Claude voor elk bedrijf een unieke mail. Zonder sleutel gebruikt de app gratis sjablonen.</p>
+          <p class="sub" style="margin:0 0 12px">Standaard gebruikt de app jouw sjablonen (gratis). Met een sleutel kan Claude elke mail op basis van jouw sjabloon persoonlijker maken voor dat ene bedrijf.</p>
+          <label class="field"><span>Hoe worden mails geschreven?</span>
+            <select data-set="WRITER_MODE"><option value="sjabloon">Exact volgens mijn sjablonen</option><option value="claude">Claude maakt mijn sjabloon persoonlijker</option></select></label>
           <label class="field"><span>API-sleutel</span><input type="password" data-set="ANTHROPIC_API_KEY" placeholder="sk-ant-..." autocomplete="off"></label>
           <p class="sub" style="font-size:12px">Sleutel aanmaken: <a href="https://platform.claude.com" target="_blank" rel="noopener">platform.claude.com</a> → API Keys.</p>
         </div>
@@ -462,7 +514,8 @@ function confirmBox(title, text, yes = "Ja", danger = false) {
   });
 }
 const STATUS = { new: ["Nieuw", "b-mute"], audited: ["Gecontroleerd", "b-info"], drafted: ["Mail klaar", "b-acc"], approved: ["Goedgekeurd", "b-warn"], sent: ["Verstuurd", "b-good"], skipped: ["Overgeslagen", "b-mute"] };
-const SITU = { no_website: ["Geen website", "b-bad"], facebook_only: ["Alleen sociale media", "b-bad"], outdated: ["Verouderde site", "b-warn"], unreachable: ["Site werkt niet", "b-bad"], ok: ["Site in orde", "b-good"] };
+const SITU = { no_website: ["Geen website", "b-bad"], facebook_only: ["Alleen sociale media", "b-bad"], outdated: ["Verouderde site", "b-warn"], unreachable: ["Site werkt niet", "b-bad"], improvable: ["Site kan beter", "b-info"], ok: ["Site in orde", "b-good"] };
+const MTYPE = { no_website: ["Geen website", "b-bad"], bad_website: ["Slechte website", "b-warn"], could_be_better: ["Website kan beter", "b-info"] };
 const KIND = { generic: ["algemeen", "b-good"], uncertain: ["nakijken", "b-warn"], personal: ["persoonlijk", "b-bad"] };
 const badge = (map, k) => k && map[k] ? `<span class="badge ${map[k][1]}">${map[k][0]}</span>` : `<span class="badge b-mute">–</span>`;
 const scoreEl = s => s == null ? "–" : `<span class="score"><i><b style="width:${+s}%"></b></i>${+s}</span>`;
@@ -487,7 +540,7 @@ function go(page) {
   current = page;
   $$("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
   $$(".page").forEach(p => p.classList.toggle("active", p.id === "p-" + page));
-  ({ dashboard: loadStats, leads: loadLeads, nakijken: loadDrafts, versturen: loadSend, afmeld: loadSup, instellingen: loadSettings, zoeken: loadStats }[page] || (() => {}))();
+  ({ dashboard: loadStats, leads: loadLeads, nakijken: loadDrafts, versturen: loadSend, afmeld: loadSup, sjablonen: loadTemplates, instellingen: loadSettings, zoeken: loadStats }[page] || (() => {}))();
   window.scrollTo(0, 0);
 }
 $$("#nav button").forEach(b => b.onclick = () => go(b.dataset.page));
@@ -524,8 +577,13 @@ async function loadStats() {
   const checks = [[S.settings_ok, "Je gegevens ingevuld (naam, e-mail, telefoon)"], [S.smtp_ok, "E-mailserver en wachtwoord ingesteld"], [S.total > 0, "Eerste bedrijven gezocht"]];
   $("#setup").innerHTML = checks.every(c => c[0]) ? "" : `<div class="card" style="margin-bottom:16px;border-color:var(--accent)"><h2>Aan de slag</h2><ul class="checklist" style="margin:0;padding-left:4px;list-style:none">${checks.map(([ok, t]) => `<li><span class="ok-dot" style="background:${ok ? "var(--good)" : "var(--line)"}"></span>${ok ? "<s class='sub'>" + t + "</s>" : t}</li>`).join("")}</ul><div class="row" style="margin-top:10px"><button class="btn primary small" data-goto="instellingen">Naar instellingen</button></div></div>`;
 
-  $("#writer-mode").innerHTML = S.claude ? "Claude schrijft voor elk bedrijf een unieke mail." : "Mails worden gemaakt met de ingebouwde sjablonen (gratis). Voeg een Claude-sleutel toe in Instellingen voor unieke mails.";
+  $("#writer-mode").innerHTML = S.claude ? "Claude maakt je sjablonen persoonlijker per bedrijf." : "Mails worden gemaakt met jouw sjablonen.";
+  const rt = S.ready_by_type || {};
+  const checked = new Set($$("#write-types input:checked").map(i => i.value));
+  const first = !$("#write-types input");
+  $("#write-types").innerHTML = Object.entries(MTYPE).map(([k, v]) => `<label class="check"><input type="checkbox" value="${k}" ${first || checked.has(k) ? "checked" : ""}><span>${v[0]}</span><span class="cnt">${rt[k] || 0} klaar</span></label>`).join("");
   $("#audit-pending").textContent = `${n("new")} bedrijven wachten op controle.`;
+  $("#rescan-info").textContent = S.missing_email ? `${S.missing_email} gecontroleerde bedrijven hebben nog geen e-mailadres.` : "";
 }
 
 // ---------- zoeken ----------
@@ -547,7 +605,6 @@ async function loadCats() {
   $("#f-category").innerHTML = `<option value="">Alle sectoren</option>` + list.map(c => `<option>${h(c)}</option>`).join("");
 }
 $("#cat-chips").onclick = e => { const b = e.target.closest("[data-cat]"); if (!b) return; const c = b.dataset.cat; cats.has(c) ? cats.delete(c) : cats.add(c); b.classList.toggle("on", cats.has(c)); };
-$("#min-score").oninput = e => $("#score-val").textContent = e.target.value;
 async function startJob(path, body) {
   try { await api(path, body); toast("Gestart"); pollJob(true); } catch (e) { toast(e.message, "bad"); }
 }
@@ -556,7 +613,8 @@ $("#btn-find").onclick = () => {
   startJob("/api/jobs/find", { cities, categories: [...cats] });
 };
 $("#btn-audit").onclick = () => startJob("/api/jobs/audit", { limit: +$("#audit-limit").value });
-$("#btn-write").onclick = () => startJob("/api/jobs/write", { min_score: +$("#min-score").value, limit: +$("#write-limit").value });
+$("#btn-rescan").onclick = () => startJob("/api/jobs/rescan", {});
+$("#btn-write").onclick = () => startJob("/api/jobs/write", { types: $$("#write-types input:checked").map(i => i.value), limit: +$("#write-limit").value });
 $("#btn-stop").onclick = () => api("/api/jobs/stop", {}).then(() => toast("Stoppen gevraagd…"));
 
 // ---------- taak volgen ----------
@@ -603,7 +661,7 @@ async function openLead(id) {
   const site = l.website && /^https?:\/\//i.test(l.website) ? `<a href="${h(l.website)}" target="_blank" rel="noopener">${h(l.website)}</a>` : "–";
   $("#drawer").innerHTML = `
     <div class="row"><h1 style="font-size:20px">${h(l.name)}</h1><span class="spacer"></span><button class="icon-btn" id="d-close">✕</button></div>
-    <div class="row" style="margin:8px 0 16px">${badge(STATUS, l.status)} ${badge(SITU, l.situation)} ${l.score != null ? `<span class="badge b-mute">score ${+l.score}</span>` : ""}</div>
+    <div class="row" style="margin:8px 0 16px">${badge(STATUS, l.status)} ${badge(SITU, l.situation)} ${l.mail_type ? badge(MTYPE, l.mail_type) : ""} ${l.score != null ? `<span class="badge b-mute">score ${+l.score}</span>` : ""}</div>
     ${l.suppressed ? `<div class="notice bad">Dit adres staat op de afmeldlijst.</div>` : ""}
     <dl class="kv">
       <dt>Sector</dt><dd>${h(l.category)}</dd>
@@ -651,7 +709,7 @@ async function renderEditor() {
   const l = await api("/api/leads/" + selectedDraft);
   const personal = l.email_kind !== "generic";
   box.innerHTML = `
-    <div class="row" style="margin-bottom:12px"><h2 style="margin:0">${h(l.name)}</h2>${badge(SITU, l.situation)}<span class="spacer"></span><span class="sub">${h(l.category)} · ${h(l.city || "")}</span></div>
+    <div class="row" style="margin-bottom:12px"><h2 style="margin:0">${h(l.name)}</h2>${badge(MTYPE, l.mail_type)}<span class="spacer"></span><span class="sub">${h(l.category)} · ${h(l.city || "")}</span></div>
     ${personal ? `<div class="notice warn"><b>Let op:</b> ${h(l.email)} lijkt een persoonlijk adres. In België mag je daar enkel naar mailen met voorafgaande toestemming. Bel liever: ${h(l.phone || "geen nummer")}.</div>` : ""}
     ${l.issues.length ? `<div class="notice info">Gevonden: ${l.issues.map(h).join(" · ")}</div>` : ""}
     <label class="field"><span>Aan</span><input type="text" value="${h(l.email)}" disabled></label>
@@ -698,6 +756,65 @@ $("#btn-send-real").onclick = async () => {
 };
 $("#btn-testmail").onclick = async () => {
   const r = await api("/api/settings/test-mail", {}); toast(r.message, r.ok ? "good" : "bad");
+};
+
+// ---------- sjablonen ----------
+let TPL = null, tplType = "no_website", tplLang = "nl", tplDirty = false, prevTimer = null;
+async function loadTemplates() {
+  TPL = await api("/api/templates");
+  renderTplTabs(); fillTplEditor();
+  $("#tpl-ph").innerHTML = Object.entries(TPL.placeholders).map(([k, d]) => `<button class="chip ph" data-ph="${h(k)}" title="${h(d)}">{${h(k)}}</button>`).join("");
+}
+function renderTplTabs() {
+  $("#tpl-tabs").innerHTML = TPL.types.map(t => {
+    const custom = TPL.templates[t.key][tplLang].custom;
+    return `<button class="ttab ${t.key === tplType ? "sel" : ""}" data-type="${t.key}">
+      <div class="tt">${badge(MTYPE, t.key)}<span class="spacer"></span><span class="badge ${custom ? "b-acc" : "b-mute"}">${custom ? "eigen tekst" : "standaard"}</span></div>
+      <div class="td">${h(t.desc)}</div><div class="td"><b>${t.ready}</b> bedrijven klaar voor deze mail</div></button>`;
+  }).join("");
+}
+function fillTplEditor() {
+  const t = TPL.templates[tplType][tplLang];
+  $("#tpl-subject").value = t.subject; $("#tpl-body").value = t.body;
+  $("#tpl-title").textContent = `${MTYPE[tplType][0]} · ${tplLang === "fr" ? "Français" : "Nederlands"}`;
+  setDirty(false); preview();
+}
+function setDirty(v) {
+  tplDirty = v;
+  const custom = TPL.templates[tplType][tplLang].custom;
+  $("#tpl-state").textContent = v ? "niet opgeslagen" : (custom ? "eigen tekst" : "standaardtekst");
+  $("#tpl-state").className = "badge " + (v ? "b-warn" : custom ? "b-acc" : "b-mute");
+}
+async function preview() {
+  const r = await api("/api/templates/preview", { type: tplType, lang: tplLang, subject: $("#tpl-subject").value, body: $("#tpl-body").value });
+  $("#tpl-prev-subject").textContent = r.subject; $("#tpl-prev-body").textContent = r.body;
+  $("#tpl-example").textContent = (r.real ? "voorbeeld met: " : "voorbeeldbedrijf: ") + r.example;
+}
+async function leaveTplCheck() { return !tplDirty || await confirmBox("Wijzigingen niet opgeslagen", "Wil je je wijzigingen weggooien?", "Weggooien", true); }
+$("#tpl-tabs").onclick = async e => { const b = e.target.closest("[data-type]"); if (!b || b.dataset.type === tplType || !await leaveTplCheck()) return; tplType = b.dataset.type; renderTplTabs(); fillTplEditor(); };
+$("#tpl-lang").onclick = async e => { const b = e.target.closest("[data-lang]"); if (!b || b.dataset.lang === tplLang || !await leaveTplCheck()) return; tplLang = b.dataset.lang; $$("#tpl-lang button").forEach(x => x.classList.toggle("on", x === b)); renderTplTabs(); fillTplEditor(); };
+["#tpl-subject", "#tpl-body"].forEach(sel => $(sel).addEventListener("input", () => { setDirty(true); clearTimeout(prevTimer); prevTimer = setTimeout(preview, 300); }));
+let lastField = null;
+["#tpl-subject", "#tpl-body"].forEach(sel => $(sel).addEventListener("focus", e => lastField = e.target));
+$("#tpl-ph").onclick = e => {
+  const b = e.target.closest("[data-ph]"); if (!b) return;
+  const f = lastField || $("#tpl-body"); const ins = "{" + b.dataset.ph + "}";
+  const a = f.selectionStart ?? f.value.length, z = f.selectionEnd ?? a;
+  f.value = f.value.slice(0, a) + ins + f.value.slice(z); f.focus(); f.selectionStart = f.selectionEnd = a + ins.length;
+  f.dispatchEvent(new Event("input"));
+};
+$("#tpl-save").onclick = async () => {
+  try { TPL = await api("/api/templates", { type: tplType, lang: tplLang, subject: $("#tpl-subject").value, body: $("#tpl-body").value }); setDirty(false); renderTplTabs(); toast("Sjabloon opgeslagen", "good"); }
+  catch (e) { toast(e.message, "bad"); }
+};
+$("#tpl-reset").onclick = async () => {
+  if (!await confirmBox("Standaardtekst terugzetten?", "Je eigen tekst voor dit sjabloon wordt verwijderd.", "Terugzetten", true)) return;
+  TPL = await api("/api/templates/reset", { type: tplType, lang: tplLang }); renderTplTabs(); fillTplEditor(); toast("Standaardtekst teruggezet");
+};
+$("#tpl-apply").onclick = async () => {
+  if (tplDirty) return toast("Sla je sjabloon eerst op.", "bad");
+  if (!await confirmBox("Klaarstaande mails bijwerken?", `Alle mails van het type “${MTYPE[tplType][0]}” die nog nagekeken moeten worden, worden opnieuw opgemaakt met dit sjabloon. Handmatige aanpassingen aan die mails gaan verloren.`, "Bijwerken")) return;
+  const r = await api("/api/templates/apply", { type: tplType }); toast(`${r.count} mails bijgewerkt`, "good"); loadStats();
 };
 
 // ---------- afmeldlijst ----------
