@@ -9,7 +9,25 @@ zoek  →  controleer  →  schrijf  →  nakijken  →  verstuur
 (OSM)    (website)      (mail)      (jij)        (SMTP)
 ```
 
-## Installatie
+## De app (aanbevolen)
+
+**Windows:** installeer eerst [Python](https://www.python.org/downloads/) en vink daarbij
+**"Add python.exe to PATH"** aan. Dubbelklik daarna op **`Sitevo starten.bat`**.
+De eerste keer zet het alles klaar, wat ongeveer een minuut duurt. Daarna opent de app in een eigen venster.
+
+**Mac/Linux:** voer `./sitevo-starten.sh` uit.
+
+In de app vind je:
+- **Dashboard:** hoeveel bedrijven gevonden, gecontroleerd, gemaild, plus grafieken per sector en per dag.
+- **Zoeken:** gemeenten en sectoren aanklikken, websites controleren, mails laten schrijven.
+- **Bedrijven:** de volledige lijst met filters. Klik op een bedrijf voor alle details.
+- **Mails nakijken:** elke mail lezen, aanpassen, opnieuw laten schrijven en goedkeuren.
+- **Versturen:** eerst testen, dan echt versturen, met de wachtrij en een live verloop.
+- **Afmeldlijst** en **Instellingen**, met knoppen voor Outlook en Gmail en een verbindingstest.
+
+Laat het zwarte venster open zolang je de app gebruikt. Als je het sluit, stopt de app.
+
+## Installatie (voor de command line)
 
 ```bash
 pip install -r requirements.txt

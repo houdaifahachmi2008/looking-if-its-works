@@ -1,10 +1,14 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+ENV_PATH = ROOT / ".env"
 
 try:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv(ENV_PATH, override=True)
 except ImportError:  # python-dotenv is optioneel
     pass
 
@@ -32,7 +36,7 @@ def sender() -> Sender:
     )
 
 
-DB_PATH = os.getenv("LEADGEN_DB", "leads.db")
+DB_PATH = os.getenv("LEADGEN_DB", str(ROOT / "leads.db"))
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")

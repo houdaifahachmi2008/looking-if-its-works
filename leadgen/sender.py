@@ -29,7 +29,7 @@ def _message(lead) -> EmailMessage:
     return msg
 
 
-def run(really_send: bool = False) -> None:
+def run(really_send: bool = False, stop=None) -> None:
     s = config.sender()
     # website, btw-nummer, adres en bedrijfsnaam zijn optioneel
     missing = [k for k in ("name", "email", "phone") if not getattr(s, k)]
@@ -43,7 +43,7 @@ def run(really_send: bool = False) -> None:
             print("Daglimiet bereikt, morgen verder.")
             return
         if not rows:
-            print("Geen goedgekeurde mails. Gebruik eerst: python -m leadgen nakijken")
+            print("Geen goedgekeurde mails. Keur eerst mails goed.")
             return
 
         smtp = None
@@ -55,6 +55,9 @@ def run(really_send: bool = False) -> None:
         done = 0
         try:
             for lead in rows[:budget]:
+                if stop and stop.is_set():
+                    print("Gestopt.")
+                    break
                 if db.is_suppressed(conn, lead["email"]):
                     conn.execute("UPDATE leads SET status='skipped' WHERE id=?", (lead["id"],))
                     continue
@@ -77,9 +80,12 @@ def run(really_send: bool = False) -> None:
                 done += 1
                 print(f"✓ verstuurd naar {lead['email']} ({lead['name']})")
                 if done < min(budget, len(rows)):
-                    time.sleep(config.SECONDS_BETWEEN_EMAILS)
+                    if stop:
+                        stop.wait(config.SECONDS_BETWEEN_EMAILS)
+                    else:
+                        time.sleep(config.SECONDS_BETWEEN_EMAILS)
         finally:
             if smtp:
                 smtp.quit()
         if not really_send:
-            print("\nDit was een test: er is niets verstuurd. Voeg --echt toe om echt te versturen.")
+            print("\nDit was een test: er is niets verstuurd.")

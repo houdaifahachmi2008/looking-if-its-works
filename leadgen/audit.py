@@ -96,10 +96,12 @@ def audit_site(url: str) -> dict:
     return {"situation": situation, "issues": issues, "score": min(score, 100), "emails": list(dict.fromkeys(emails))}
 
 
-def run(limit: int = 50) -> int:
+def run(limit: int = 50, stop=None) -> int:
     with db.connect() as conn:
         rows = conn.execute("SELECT * FROM leads WHERE status='new' LIMIT ?", (limit,)).fetchall()
         for row in rows:
+            if stop and stop.is_set():
+                break
             if row["website"]:
                 res = audit_site(row["website"])
             else:
@@ -112,6 +114,7 @@ def run(limit: int = 50) -> int:
                 "UPDATE leads SET situation=?, issues=?, score=?, email=?, email_kind=?, status='audited' WHERE id=?",
                 (res["situation"], json.dumps(res["issues"], ensure_ascii=False), res["score"], email, kind, row["id"]),
             )
+            conn.commit()
             print(f"  {row['name'][:40]:40} {res['situation']:14} score {res['score']:3}  {email or '-'}")
             time.sleep(1)  # beleefd blijven tegenover andermans servers
     return len(rows)

@@ -150,7 +150,25 @@ def _claude(lead) -> tuple[str, str] | None:
     return response.parsed_output.subject, response.parsed_output.body.strip()
 
 
-def run(min_score: int = 30, limit: int = 50) -> int:
+def draft_one(conn, lead, use_claude: bool | None = None) -> str:
+    """Schrijf (of herschrijf) de mail voor één lead en bewaar ze. Geeft het onderwerp terug."""
+    if use_claude is None:
+        use_claude = bool(os.getenv("ANTHROPIC_API_KEY"))
+    result = None
+    if use_claude:
+        try:
+            result = _claude(lead)
+        except Exception as e:  # val terug op sjabloon zodat de batch doorloopt
+            print(f"  Claude-fout bij {lead['name']}: {e} -> sjabloon")
+    subject, body = result or _template(lead)
+    conn.execute(
+        "UPDATE leads SET subject=?, body=?, status='drafted' WHERE id=?",
+        (subject, body + footer(lead["lang"]), lead["id"]),
+    )
+    return subject
+
+
+def run(min_score: int = 30, limit: int = 50, stop=None) -> int:
     use_claude = bool(os.getenv("ANTHROPIC_API_KEY"))
     print("Schrijven met", "Claude" if use_claude else "ingebouwde sjablonen")
     with db.connect() as conn:
@@ -160,16 +178,9 @@ def run(min_score: int = 30, limit: int = 50) -> int:
             (min_score, limit),
         ).fetchall()
         for lead in rows:
-            result = None
-            if use_claude:
-                try:
-                    result = _claude(lead)
-                except Exception as e:  # val terug op sjabloon zodat de batch doorloopt
-                    print(f"  Claude-fout bij {lead['name']}: {e} -> sjabloon")
-            subject, body = result or _template(lead)
-            conn.execute(
-                "UPDATE leads SET subject=?, body=?, status='drafted' WHERE id=?",
-                (subject, body + footer(lead["lang"]), lead["id"]),
-            )
+            if stop and stop.is_set():
+                break
+            subject = draft_one(conn, lead, use_claude)
+            conn.commit()
             print(f"  ✉ {lead['name'][:40]:40} {subject}")
     return len(rows)
