@@ -6,7 +6,6 @@ import io
 import json
 import os
 import shutil
-import smtplib
 import subprocess
 import sys
 import threading
@@ -195,10 +194,21 @@ def save_settings(data: dict) -> dict:
         if k not in data:
             continue
         v = str(data[k]).strip()
-        if k in SECRET_FIELDS and v and set(v) == {"•"}:
-            continue  # niet gewijzigd
+        if k in SECRET_FIELDS:
+            if v and set(v) == {"•"}:
+                continue  # niet gewijzigd
+            v = v.replace("•", "")  # per ongeluk meegetypte puntjes
         current[k] = v
-    lines = ["# Ingesteld via de Sitevo-app"] + [f"{k}={v}" for k, v in current.items()]
+    host = current.get("SMTP_HOST", "").lower()
+    if "gmail" in host or "google" in host:
+        current["SMTP_PASSWORD"] = current["SMTP_PASSWORD"].replace(" ", "")  # app-wachtwoorden hebben geen spaties
+    if not current.get("SMTP_USER") and current.get("SENDER_EMAIL"):
+        current["SMTP_USER"] = current["SENDER_EMAIL"]
+
+    def quote(v: str) -> str:
+        return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+    lines = ["# Ingesteld via de Sitevo-app"] + [f"{k}={quote(v)}" for k, v in current.items()]
     config.ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     for k, v in current.items():
         os.environ[k] = v
@@ -208,17 +218,12 @@ def save_settings(data: dict) -> dict:
 
 def test_smtp() -> dict:
     if not (config.SMTP_HOST and config.SMTP_USER and config.SMTP_PASSWORD):
-        return {"ok": False, "message": "Vul eerst server, gebruiker en wachtwoord in en bewaar."}
+        return {"ok": False, "message": "Vul eerst server, gebruiker en wachtwoord in."}
     try:
-        with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=20) as s:
-            s.starttls()
-            s.login(config.SMTP_USER, config.SMTP_PASSWORD)
+        sender.connect_smtp().quit()
         return {"ok": True, "message": "Verbinding gelukt! Je kan mails versturen."}
-    except smtplib.SMTPAuthenticationError as e:
-        return {"ok": False, "message": "Inloggen geweigerd. Gebruik een app-wachtwoord "
-                                        f"(zie uitleg hieronder). Details: {e.smtp_error.decode(errors='ignore')[:200]}"}
     except Exception as e:
-        return {"ok": False, "message": f"Geen verbinding: {e}"}
+        return {"ok": False, "message": sender.explain_smtp_error(e)}
 
 
 def send_test_mail(to: str) -> dict:
@@ -229,15 +234,15 @@ def send_test_mail(to: str) -> dict:
     subject, body = writer._template(lead)
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = config.SMTP_USER, to, "[TEST] " + subject
+    msg["Reply-To"] = config.sender().email or config.SMTP_USER
     msg.set_content(body + writer.footer("nl"))
     try:
-        with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as s:
-            s.starttls()
-            s.login(config.SMTP_USER, config.SMTP_PASSWORD)
-            s.send_message(msg)
+        smtp = sender.connect_smtp()
+        smtp.send_message(msg)
+        smtp.quit()
         return {"ok": True, "message": f"Testmail verstuurd naar {to}. Kijk ook in je spam."}
     except Exception as e:
-        return {"ok": False, "message": f"Mislukt: {e}"}
+        return {"ok": False, "message": sender.explain_smtp_error(e)}
 
 
 def export_csv() -> bytes:

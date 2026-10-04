@@ -394,8 +394,29 @@ dialog::backdrop { background: rgba(8,10,20,.45); }
           </div>
           <label class="field"><span>Gebruiker (je e-mailadres)</span><input type="text" data-set="SMTP_USER"></label>
           <label class="field"><span>Wachtwoord of app-wachtwoord</span><input type="password" data-set="SMTP_PASSWORD" autocomplete="new-password"></label>
-          <div class="row"><button class="btn" id="btn-test-smtp">Verbinding testen</button><span class="sub" id="smtp-result"></span></div>
-          <p class="sub" style="font-size:12px;margin-top:12px">Lukt inloggen niet? Zet tweestapsverificatie aan op je account en maak een <b>app-wachtwoord</b> aan. Gebruik dat hier in plaats van je gewone wachtwoord.</p>
+          <div class="row"><button class="btn" id="btn-test-smtp">Verbinding testen</button></div>
+          <div id="smtp-result" style="margin-top:12px"></div>
+          <details style="margin-top:12px" open>
+            <summary style="cursor:pointer;font-weight:600">Stappenplan Gmail (aanbevolen)</summary>
+            <ol class="sub" style="font-size:13px;padding-left:18px;margin:8px 0 0">
+              <li>Klik hierboven op <b>Gmail</b>.</li>
+              <li>Zet <b>tweestapsverificatie</b> aan: <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener">myaccount.google.com/signinoptions/twosv</a></li>
+              <li>Maak een <b>app-wachtwoord</b> aan: <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>. Geef het de naam “Sitevo”.</li>
+              <li>Google toont 16 letters. Plak die bij <b>Wachtwoord</b>. Je gewone Gmail-wachtwoord werkt hier niet.</li>
+              <li>Vul bij <b>Gebruiker</b> je volledige Gmail-adres in en klik op <b>Verbinding testen</b>.</li>
+            </ol>
+            <p class="sub" style="font-size:12px">Antwoorden van klanten gaan naar het e-mailadres bij “Jouw gegevens”, dus dat mag gewoon je Outlook-adres blijven.</p>
+          </details>
+          <details style="margin-top:8px">
+            <summary style="cursor:pointer;font-weight:600">Stappenplan Outlook</summary>
+            <ol class="sub" style="font-size:13px;padding-left:18px;margin:8px 0 0">
+              <li>Klik hierboven op <b>Outlook</b>.</li>
+              <li>Zet <b>tweestapsverificatie</b> aan op <a href="https://account.microsoft.com/security" target="_blank" rel="noopener">account.microsoft.com/security</a>.</li>
+              <li>Ga daar naar <b>Geavanceerde beveiligingsopties → App-wachtwoorden</b> en maak er een aan.</li>
+              <li>Plak dat wachtwoord bij <b>Wachtwoord</b> en klik op <b>Verbinding testen</b>.</li>
+            </ol>
+            <p class="sub" style="font-size:12px">Microsoft blokkeert dit steeds vaker. Lukt het niet, gebruik dan Gmail.</p>
+          </details>
         </div>
         <div class="card">
           <h2>Claude (optioneel)</h2>
@@ -693,18 +714,30 @@ async function loadSettings() {
   $$("[data-set]").forEach(i => i.value = s[i.dataset.set] ?? "");
 }
 const setVal = (k, v) => { $(`[data-set="${k}"]`).value = v; };
-$("#preset-outlook").onclick = () => { setVal("SMTP_HOST", "smtp-mail.outlook.com"); setVal("SMTP_PORT", "587"); toast("Outlook-instellingen ingevuld. Vergeet niet op te slaan."); };
-$("#preset-gmail").onclick = () => { setVal("SMTP_HOST", "smtp.gmail.com"); setVal("SMTP_PORT", "587"); toast("Gmail-instellingen ingevuld. Vergeet niet op te slaan."); };
+function preset(host, domainHint, name) {
+  setVal("SMTP_HOST", host); setVal("SMTP_PORT", "587");
+  const user = $('[data-set="SMTP_USER"]');
+  if (!user.value.toLowerCase().includes(domainHint)) { user.value = ""; user.placeholder = "jouwnaam@" + domainHint + ".com"; user.focus(); }
+  setVal("SMTP_PASSWORD", ""); $('[data-set="SMTP_PASSWORD"]').placeholder = "plak hier je app-wachtwoord";
+  toast(name + " ingesteld. Vul je adres en app-wachtwoord in en klik op Verbinding testen.");
+}
+$("#preset-outlook").onclick = () => preset("smtp-mail.outlook.com", "outlook", "Outlook");
+$("#preset-gmail").onclick = () => preset("smtp.gmail.com", "gmail", "Gmail");
+// wachtwoordvelden: de puntjes betekenen "al ingesteld"; bij klikken maken we het veld leeg
+$$('input[type=password][data-set]').forEach(inp => {
+  inp.addEventListener("focus", () => { if (/^•+$/.test(inp.value)) { inp.dataset.masked = inp.value; inp.value = ""; inp.placeholder = "nieuw wachtwoord (leeg laten = niet wijzigen)"; } });
+  inp.addEventListener("blur", () => { if (!inp.value && inp.dataset.masked) { inp.value = inp.dataset.masked; } });
+});
 async function saveSettings(quiet) {
   const data = {}; $$("[data-set]").forEach(i => data[i.dataset.set] = i.value);
   await api("/api/settings", data); if (!quiet) toast("Instellingen opgeslagen", "good"); loadStats();
 }
 $("#btn-save").onclick = () => saveSettings();
 $("#btn-test-smtp").onclick = async e => {
-  e.target.disabled = true; $("#smtp-result").textContent = "Bezig met verbinden…";
+  e.target.disabled = true; $("#smtp-result").innerHTML = `<div class="notice info" style="margin:0">Bezig met verbinden…</div>`;
   await saveSettings(true);
   const r = await api("/api/settings/test-smtp", {});
-  $("#smtp-result").innerHTML = `<span style="color:var(${r.ok ? "--good" : "--bad"})">${h(r.message)}</span>`;
+  $("#smtp-result").innerHTML = `<div class="notice ${r.ok ? "good" : "bad"}" style="margin:0">${h(r.message)}</div>`;
   e.target.disabled = false;
 };
 
