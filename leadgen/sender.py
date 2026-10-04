@@ -17,7 +17,8 @@ def sent_today(conn) -> int:
 def _message(lead) -> EmailMessage:
     s = config.sender()
     msg = EmailMessage()
-    msg["From"] = formataddr((f"{s.name} – {s.company}", s.email))
+    display = f"{s.name} – {s.company}" if s.company else s.name
+    msg["From"] = formataddr((display, s.email))
     msg["To"] = lead["email"]
     msg["Subject"] = lead["subject"]
     msg["Reply-To"] = s.email
@@ -30,7 +31,8 @@ def _message(lead) -> EmailMessage:
 
 def run(really_send: bool = False) -> None:
     s = config.sender()
-    missing = [k for k, v in vars(s).items() if not v]
+    # website, btw-nummer, adres en bedrijfsnaam zijn optioneel
+    missing = [k for k in ("name", "email", "phone") if not getattr(s, k)]
     if missing:
         raise SystemExit(f"Vul eerst je gegevens in .env in (ontbreekt: {', '.join(missing)}).")
 

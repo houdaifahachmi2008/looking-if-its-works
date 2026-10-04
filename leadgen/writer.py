@@ -33,12 +33,26 @@ def _issue_fr(issue: str) -> str:
 
 def footer(lang: str) -> str:
     s = config.sender()
-    ident = f"{s.company} · {s.address} · btw {s.vat}" if lang == "nl" else f"{s.company} · {s.address} · TVA {s.vat}"
+    vat_label = "TVA" if lang == "fr" else "btw"
     if lang == "fr":
         optout = "Vous ne souhaitez plus recevoir de messages de notre part ? Répondez simplement « désinscrire » et nous ne vous contacterons plus."
     else:
         optout = "Liever geen berichten meer van ons? Antwoord gewoon met ‘uitschrijven’ en we contacteren u niet meer."
-    return f"\n\n--\n{s.name}\n{s.company}\n{s.phone} · {s.website}\n\n{ident}\n{optout}"
+    # lege velden (geen website, btw-nummer of adres) worden gewoon weggelaten
+    contact = " · ".join(filter(None, [s.phone, s.email, s.website]))
+    ident = " · ".join(filter(None, [s.company, s.address, f"{vat_label} {s.vat}" if s.vat else ""]))
+    lines = [s.name, s.company, contact]
+    out = "\n\n--\n" + "\n".join(filter(None, lines))
+    if ident and ident != s.company:
+        out += "\n\n" + ident
+    return out + "\n" + optout
+
+
+def _who(lang: str) -> str:
+    s = config.sender()
+    if not s.company:
+        return s.name
+    return f"{s.name} de {s.company}" if lang == "fr" else f"{s.name} van {s.company}"
 
 
 # ---------------------------------------------------------------- sjablonen
@@ -50,7 +64,7 @@ def _template(lead) -> tuple[str, str]:
 
     if lead["lang"] == "fr":
         greet = f"Bonjour,\n\n"
-        intro = f"Je suis {s.name} de {s.company}, je crée des sites web pour les indépendants et PME de la région de {city}."
+        intro = f"Je suis {_who('fr')}, je crée des sites web pour les indépendants et PME de la région de {city}."
         if lead["situation"] == "no_website":
             subject = f"Un site web pour {name} ?"
             hook = (f"En cherchant des entreprises à {city}, je suis tombé sur {name}, mais je n'ai pas trouvé de site web. "
@@ -69,7 +83,7 @@ def _template(lead) -> tuple[str, str]:
         return subject, f"{greet}{intro}\n\n{hook}\n\n{offer}\n\nBien à vous,"
 
     greet = "Goeiedag,\n\n"
-    intro = f"Ik ben {s.name} van {s.company}. Ik maak websites voor zelfstandigen en KMO's in de regio {city}."
+    intro = f"Ik ben {_who('nl')}. Ik maak websites voor zelfstandigen en KMO's in de regio {city}."
     if lead["situation"] == "no_website":
         subject = f"Een website voor {name}?"
         hook = (f"Toen ik op zoek ging naar bedrijven in {city}, kwam ik {name} tegen, maar ik vond geen website. "
@@ -118,7 +132,7 @@ def _claude(lead) -> tuple[str, str] | None:
         "situatie": lead["situation"],
         "gevonden_problemen": json.loads(lead["issues"] or "[]"),
         "website": lead["website"],
-        "afzender": {"naam": s.name, "bedrijf": s.company},
+        "afzender": {"naam": s.name, "bedrijf": s.company or None, "heeft_eigen_website": bool(s.website)},
     }
     client = anthropic.Anthropic()
     response = client.beta.messages.parse(

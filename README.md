@@ -75,7 +75,7 @@ Het systeem is daarom zo gebouwd:
 | Regel | Hoe het systeem dat doet |
 |---|---|
 | Zonder toestemming mag je enkel naar **onpersoonlijke** adressen van bedrijven mailen (info@, contact@, …) | Adressen worden ingedeeld als `generic` / `uncertain` / `personal`. Alleen `generic` wordt automatisch goedgekeurd. Bij de andere vraagt `nakijken` of je toestemming hebt. |
-| Je moet duidelijk zeggen wie je bent | Naam, bedrijf, adres, btw-nummer en contact staan onderaan elke mail (verplicht in `.env`). |
+| Je moet duidelijk zeggen wie je bent | Naam, e-mail en telefoon staan onderaan elke mail (verplicht in `.env`). Bedrijfsnaam, adres, btw-nummer en website komen erbij zodra je ze invult. |
 | Elke mail moet een eenvoudige afmeldmogelijkheid hebben | Afmeldzin onderaan + `List-Unsubscribe`-header. Afmeldingen gaan naar een afmeldlijst die nooit meer gemaild wordt. |
 | Gegevens niet langer bijhouden dan nodig | Alles staat lokaal in `leads.db`; verwijder oude leads als je er niets mee doet. |
 
