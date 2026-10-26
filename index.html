@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>MediaHub</title>
+  <meta name="theme-color" content="#0b0b10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MediaHub">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <style>
+    :root {
+      --bg: #0b0b10;
+      --panel: #16161f;
+      --text: #f4f4f7;
+      --muted: #9a9aab;
+      --accent: #e50914;
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+    h1 { font-size: 1.6rem; margin: 0; }
+    h2 { font-size: 1rem; color: var(--muted); font-weight: 600; margin: 28px 0 12px; text-transform: uppercase; letter-spacing: .06em; }
+    button {
+      font: inherit; color: var(--text); background: var(--panel); border: 1px solid #2a2a38;
+      border-radius: 12px; padding: 10px 14px; cursor: pointer;
+    }
+    button:hover { border-color: #44445a; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+    .tile {
+      position: relative; display: flex; flex-direction: column; justify-content: flex-end;
+      aspect-ratio: 1 / 1; padding: 14px; border-radius: var(--radius);
+      color: #fff; text-decoration: none; font-weight: 700; font-size: 1.05rem;
+      box-shadow: 0 6px 18px rgba(0,0,0,.35); transition: transform .15s ease;
+    }
+    .tile:active { transform: scale(.96); }
+    .tile .logo { font-size: 2.4rem; position: absolute; top: 14px; left: 14px; line-height: 1; }
+    .tile small { font-weight: 500; opacity: .8; font-size: .78rem; }
+    .tile .remove {
+      position: absolute; top: 8px; right: 8px; padding: 2px 9px; border-radius: 999px;
+      background: rgba(0,0,0,.45); border: none; display: none;
+    }
+    body.editing .tile .remove { display: block; }
+    .notice {
+      background: var(--panel); border-left: 4px solid #f5a623; border-radius: 12px;
+      padding: 14px 16px; color: var(--muted); line-height: 1.5; font-size: .92rem;
+    }
+    .notice strong { color: var(--text); }
+    form { display: none; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    body.editing form { display: flex; }
+    input {
+      font: inherit; flex: 1 1 180px; min-width: 0; padding: 10px 12px; border-radius: 12px;
+      border: 1px solid #2a2a38; background: var(--panel); color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎬 MediaHub</h1>
+    <button id="editBtn" type="button">Bewerken</button>
+  </header>
+
+  <h2>Video</h2>
+  <div class="grid" id="video"></div>
+
+  <h2>Muziek &amp; podcasts (werkt via CarPlay)</h2>
+  <div class="grid" id="audio"></div>
+
+  <h2>Eigen apps</h2>
+  <div class="grid" id="custom"></div>
+  <form id="addForm">
+    <input id="addName" placeholder="Naam (bijv. Videoland)" required>
+    <input id="addUrl" type="url" placeholder="https://..." required>
+    <button type="submit">Toevoegen</button>
+  </form>
+
+  <h2>Over CarPlay</h2>
+  <p class="notice">
+    <strong>Video op CarPlay:</strong> Apple staat geen video-apps (Netflix, YouTube) op het CarPlay-scherm toe tijdens het rijden.
+    Muziek-apps zoals Spotify en YouTube Music verschijnen wel automatisch op CarPlay.
+    Vanaf iOS 26 kunnen sommige auto's video via AirPlay op het CarPlay-scherm tonen, maar <strong>alleen als de auto geparkeerd staat</strong>.
+    Gebruik MediaHub verder op je iPhone of iPad (bijvoorbeeld voor passagiers achterin).
+  </p>
+
+  <script>
+    const VIDEO = [
+      { name: "Netflix", url: "https://www.netflix.com", logo: "🍿", color: "#e50914" },
+      { name: "YouTube", url: "https://www.youtube.com", logo: "▶️", color: "#ff0000" },
+      { name: "Disney+", url: "https://www.disneyplus.com", logo: "🏰", color: "#113ccf" },
+      { name: "Prime Video", url: "https://www.primevideo.com", logo: "📦", color: "#00a8e1" },
+      { name: "Videoland", url: "https://www.videoland.com", logo: "📺", color: "#d9006c" },
+      { name: "NPO Start", url: "https://npo.nl/start", logo: "🇳🇱", color: "#ff6d00" },
+      { name: "HBO Max", url: "https://www.max.com", logo: "🎞️", color: "#5822b4" },
+      { name: "Twitch", url: "https://www.twitch.tv", logo: "🎮", color: "#9146ff" }
+    ];
+    const AUDIO = [
+      { name: "Spotify", url: "https://open.spotify.com", logo: "🎧", color: "#1db954" },
+      { name: "YouTube Music", url: "https://music.youtube.com", logo: "🎵", color: "#c4302b" },
+      { name: "Apple Music", url: "https://music.apple.com", logo: "🍎", color: "#fa2d48" },
+      { name: "NPO Radio", url: "https://www.nporadio2.nl", logo: "📻", color: "#2b2b8f" }
+    ];
+    const STORE_KEY = "mediahub.custom";
+
+    function loadCustom() {
+      try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; }
+    }
+    function saveCustom(list) {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch {}
+    }
+
+    function tile(app, onRemove) {
+      const a = document.createElement("a");
+      a.className = "tile";
+      a.href = app.url;
+      a.rel = "noopener";
+      a.style.background = `linear-gradient(160deg, ${app.color}, #000 140%)`;
+      const logo = document.createElement("span");
+      logo.className = "logo";
+      logo.textContent = app.logo || "⭐";
+      const name = document.createElement("span");
+      name.textContent = app.name;
+      const host = document.createElement("small");
+      host.textContent = new URL(app.url).hostname.replace(/^www\./, "");
+      a.append(logo, name, host);
+      if (onRemove) {
+        const x = document.createElement("button");
+        x.className = "remove";
+        x.type = "button";
+        x.textContent = "✕";
+        x.addEventListener("click", e => { e.preventDefault(); onRemove(); });
+        a.append(x);
+      }
+      return a;
+    }
+
+    function render() {
+      document.getElementById("video").replaceChildren(...VIDEO.map(a => tile(a)));
+      document.getElementById("audio").replaceChildren(...AUDIO.map(a => tile(a)));
+      const custom = loadCustom();
+      document.getElementById("custom").replaceChildren(...custom.map((a, i) =>
+        tile(a, () => { custom.splice(i, 1); saveCustom(custom); render(); })));
+    }
+
+    document.getElementById("editBtn").addEventListener("click", e => {
+      const on = document.body.classList.toggle("editing");
+      e.target.textContent = on ? "Klaar" : "Bewerken";
+    });
+
+    document.getElementById("addForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const custom = loadCustom();
+      custom.push({
+        name: document.getElementById("addName").value.trim(),
+        url: document.getElementById("addUrl").value.trim(),
+        logo: "⭐",
+        color: "#3b3b52"
+      });
+      saveCustom(custom);
+      e.target.reset();
+      render();
+    });
+
+    render();
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  </script>
+</body>
+</html>
