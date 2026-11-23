@@ -81,7 +81,9 @@ python -m viralbot status       # shows which integrations are configured
 ```
 
 ### Windows
-Install Python 3.11+, then FFmpeg (e.g. `winget install Gyan.FFmpeg`). Then:
+Install Python 3.11+ (tick "Add Python to PATH"), then FFmpeg (e.g. `winget install Gyan.FFmpeg`).
+**Easiest:** double-click `start_viralbot.bat`. The first time it installs everything, and every later
+time it just opens the dashboard. Manual alternative:
 ```powershell
 py -3.11 -m venv .venv; .venv\Scripts\activate
 pip install -r requirements.txt
