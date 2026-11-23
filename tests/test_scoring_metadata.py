@@ -81,3 +81,40 @@ def test_metadata_guardrails():
     assert meta["hashtags"][0] == "#shorts" and len(meta["hashtags"]) <= 5
     assert "CC BY" in meta["description"] and len(meta["title"]) <= 100
     assert meta["category_id"] in {"17", "22", "27"}
+
+
+def test_gemini_retired_model_falls_back(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "dummy")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-old")
+    from viralbot import config
+    config.reset_env()
+    monkeypatch.setattr(llm, "_gemini_model_override", None)
+
+    class R:
+        def __init__(self, code, data):
+            self.status_code, self._d, self.text = code, data, json.dumps(data)
+        def json(self):
+            return self._d
+        def raise_for_status(self):
+            pass
+
+    calls = []
+
+    def post(url, headers, json, timeout):
+        calls.append(url)
+        if "gemini-old" in url:
+            return R(404, {"error": "not found"})
+        return R(200, {"candidates": [{"content": {"parts": [{"text": '{"ok": true}'}]}}],
+                       "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5}})
+
+    def get(url, headers, params, timeout):
+        return R(200, {"models": [
+            {"name": "models/gemini-9-flash", "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/gemini-9-flash-image", "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/embedding-1", "supportedGenerationMethods": ["embedContent"]}]})
+
+    monkeypatch.setattr(llm.requests, "post", post)
+    monkeypatch.setattr(llm.requests, "get", get)
+    assert llm.complete_json("hi", "test") == {"ok": True}
+    assert calls[-1].endswith("models/gemini-9-flash:generateContent")
+    assert db.scalar("SELECT model FROM api_costs WHERE provider='gemini'", (), "") == "gemini-9-flash"
