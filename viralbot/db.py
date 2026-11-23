@@ -208,6 +208,8 @@ def close() -> None:
 def init_db() -> None:
     conn = connect()
     conn.executescript(SCHEMA)
+    from .creators import SCHEMA as CREATORS_SCHEMA
+    conn.executescript(CREATORS_SCHEMA)
 
 
 @contextmanager

@@ -46,7 +46,9 @@ def _get(path: str, params: dict) -> dict:
 
 
 def _clip_item(c: dict, topic: str) -> dict:
-    authorized = c.get("broadcaster_name", "").lower() in env().authorized_twitch_broadcasters or \
+    from ..creators import rights_for_item
+    approved = rights_for_item("twitch", c.get("broadcaster_id"), c.get("broadcaster_name"))
+    authorized = bool(approved) or c.get("broadcaster_name", "").lower() in env().authorized_twitch_broadcasters or \
         c.get("broadcaster_id", "") in env().authorized_twitch_broadcasters
     item = {
         "platform": "twitch",
@@ -63,7 +65,9 @@ def _clip_item(c: dict, topic: str) -> dict:
         "raw": {"game_id": c.get("game_id"), "language": c.get("language"), "creator": c.get("creator_name")},
         "rights_status": "authorized" if authorized else "unknown",
     }
-    if authorized:
+    if approved:
+        item.update(approved)
+    elif authorized:
         item["rights_evidence"] = "Broadcaster listed in AUTHORIZED_TWITCH_BROADCASTERS (keep written permission on file)"
         item["attribution"] = f"Clip from {c.get('broadcaster_name')} on Twitch: https://twitch.tv/{c.get('broadcaster_name')}"
     return item
@@ -78,9 +82,11 @@ def discover(settings: dict) -> list[dict]:
     out: list[dict] = []
     try:
         # authorized broadcasters
-        if e.authorized_twitch_broadcasters:
-            logins = [b for b in e.authorized_twitch_broadcasters if not b.isdigit()]
-            ids = [b for b in e.authorized_twitch_broadcasters if b.isdigit()]
+        from ..creators import approved_ids
+        allowed = list(dict.fromkeys(e.authorized_twitch_broadcasters + approved_ids("twitch")))
+        if allowed:
+            logins = [b for b in allowed if not b.isdigit()]
+            ids = [b for b in allowed if b.isdigit()]
             if logins:
                 users = _get("users", {"login": logins[:100]}).get("data", [])
                 ids += [u["id"] for u in users]

@@ -61,6 +61,10 @@ def _rights_for(item: dict, cc_license: bool) -> dict:
     ch = item.get("channel_id") or ""
     if ch and ch in e.owned_youtube_channels:
         return {"rights_status": "owned", "rights_evidence": "Channel listed in OWNED_YOUTUBE_CHANNELS"}
+    from ..creators import rights_for_item
+    approved = rights_for_item("youtube", ch)
+    if approved:
+        return approved
     if ch and ch in e.authorized_youtube_channels:
         return {"rights_status": "authorized",
                 "rights_evidence": "Channel listed in AUTHORIZED_YOUTUBE_CHANNELS (keep written permission on file)"}
@@ -136,7 +140,8 @@ def discover(settings: dict) -> list[dict]:
         return []
     results: list[dict] = []
     # 1) owned + authorized channels first (cheap, and always processable)
-    for ch in dict.fromkeys(e.owned_youtube_channels + e.authorized_youtube_channels):
+    from ..creators import approved_ids
+    for ch in dict.fromkeys(e.owned_youtube_channels + e.authorized_youtube_channels + approved_ids("youtube")):
         try:
             results += channel_uploads(ch)
         except QuotaExceeded as ex:

@@ -24,4 +24,4 @@ plotly>=5.20
 pytest>=8.0
 
 # Optional (NOT installed by default, see README "Importing authorized remote media"):
-# yt-dlp
+yt-dlp>=2025.1.1   # only used for creators who gave permission (ENABLE_YTDLP=true)

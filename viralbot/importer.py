@@ -49,11 +49,20 @@ def _download_http(url: str, dst: Path) -> Path:
     return dst
 
 
+def ytdlp_command() -> list[str]:
+    """yt-dlp as a module of this Python (no PATH needed), else the standalone binary."""
+    import importlib.util
+    import sys
+    if importlib.util.find_spec("yt_dlp") is not None:
+        return [sys.executable, "-m", "yt_dlp"]
+    if shutil.which("yt-dlp"):
+        return ["yt-dlp"]
+    raise ImportBlocked("yt-dlp is not installed (pip install yt-dlp)")
+
+
 def _download_ytdlp(url: str, dst_dir: Path, stem: str) -> Path:
-    if shutil.which("yt-dlp") is None:
-        raise ImportBlocked("yt-dlp is not installed (pip install yt-dlp)")
     out_tmpl = str(dst_dir / f"{stem}.%(ext)s")
-    cmd = ["yt-dlp", "--no-playlist", "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
+    cmd = ytdlp_command() + ["--no-playlist", "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
            "--merge-output-format", "mp4", "-o", out_tmpl, "--no-progress", url]
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
     if p.returncode != 0:

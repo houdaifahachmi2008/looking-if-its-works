@@ -539,9 +539,29 @@ def page_connections():
             elif test:
                 _test_result(*tester())
 
+    # ---------------------------------------------------------------- Downloads
+    with st.container(border=True):
+        st.subheader("4 · Downloads for approved creators")
+        from viralbot.importer import ImportBlocked, ytdlp_command
+        try:
+            ytdlp_command()
+            have = True
+        except ImportBlocked:
+            have = False
+        st.caption("Lets ViralBot download videos/clips of creators you marked **approved** (🤝 Creators). "
+                   "Never used for anyone else. Platform terms restrict downloading, so the cleanest option is "
+                   "still to ask creators for the files and drop them in data/inbox.")
+        if not have:
+            st.warning("yt-dlp is not installed. In the ViralBot folder run: "
+                       "`.venv\\Scripts\\python.exe -m pip install yt-dlp`", icon="⚠️")
+        on = st.toggle("Allow downloading approved creators' videos", value=e.enable_ytdlp, disabled=not have)
+        if on != e.enable_ytdlp:
+            cx.save_env_values({"ENABLE_YTDLP": "true" if on else "false"})
+            st.rerun()
+
     # ---------------------------------------------------------------- Twitch
     with st.container(border=True):
-        st.subheader("4 · Twitch (optional)")
+        st.subheader("5 · Twitch (optional)")
         st.caption(f"Current client ID: `{cx.mask(e.twitch_client_id)}` · register an app at dev.twitch.tv/console")
         with st.form("twitch"):
             cid = st.text_input("Client ID")
@@ -554,8 +574,134 @@ def page_connections():
             _test_result(ok, msg + ("" if ok else " – not saved"))
 
 
+def _resolve_youtube_channel(value: str) -> tuple[str, str]:
+    """Accept UC… id, @handle or channel URL; return (channel_id, name)."""
+    v = value.strip().rstrip("/")
+    if "youtube.com/" in v:
+        v = v.split("youtube.com/")[-1]
+        v = v.split("channel/")[-1] if v.startswith("channel/") else v
+    if v.startswith("UC") and len(v) == 24:
+        return v, ""
+    handle = v if v.startswith("@") else "@" + v
+    if not env().youtube_api_key:
+        raise ValueError("Enter the channel ID (starts with UC…) or set a YouTube API key to look up @handles")
+    from viralbot.discovery.youtube import _get
+    data = _get("channels", {"part": "snippet", "forHandle": handle})
+    items = data.get("items", [])
+    if not items:
+        raise ValueError(f"No YouTube channel found for {handle}")
+    return items[0]["id"], items[0]["snippet"]["title"]
+
+
+def page_creators():
+    from viralbot import creators as cr
+
+    cr.init()
+    st.title("Creators & permission")
+    st.info("Clip other people's content **only with their permission**. Ask creators, record their answer here, "
+            "and ViralBot automatically clips everyone marked **approved** – including all their future videos. "
+            "Declined or revoked creators are stopped immediately.", icon="🤝")
+
+    ytdlp = env().enable_ytdlp
+    if not ytdlp:
+        st.warning("Downloading approved creators' videos is switched off. Turn it on under "
+                   "🔌 Connections → 4 · Downloads (or ask creators to send you the files and drop them in data/inbox).",
+                   icon="⬇️")
+
+    approved = df("SELECT platform, channel_id, name, evidence, attribution, monetization_allowed, decided_at "
+                  "FROM creators WHERE status='approved' ORDER BY decided_at DESC")
+    st.subheader(f"✅ Approved creators ({len(approved)})")
+    if approved.empty:
+        st.caption("Nobody yet. Start with the suggestions below.")
+    else:
+        st.dataframe(approved, hide_index=True, width="stretch")
+
+    tab_s, tab_o, tab_add, tab_msg = st.tabs(["💡 Suggestions", "📬 Outreach list", "➕ Add / update", "✉️ Message"])
+
+    with tab_s:
+        sug = cr.suggestions(50)
+        st.caption("Popular channels the bot discovered (from leads). Add the ones you like to your outreach list.")
+        if not sug:
+            st.write("No suggestions yet – they appear after discovery has run (needs a YouTube key / Twitch).")
+        else:
+            sdf = pd.DataFrame(sug)
+            st.dataframe(sdf[["platform", "name", "cid", "videos", "total_views", "best_score", "topic"]],
+                         hide_index=True, width="stretch")
+            labels = [f"{x['name']} ({x['platform']})" for x in sug]
+            pick = st.multiselect("Add to outreach list", labels)
+            if st.button("Add selected", disabled=not pick):
+                for lab in pick:
+                    x = sug[labels.index(lab)]
+                    cr.upsert(x["platform"], x["cid"], name=x["name"] or "", status="to_ask")
+                st.success(f"Added {len(pick)} creator(s) to the outreach list.")
+                st.rerun()
+
+    with tab_o:
+        out = df("SELECT id, platform, channel_id, name, contact, status, asked_at, notes FROM creators "
+                 "WHERE status IN ('to_ask','asked') ORDER BY status DESC, id")
+        if out.empty:
+            st.write("Outreach list is empty.")
+        else:
+            st.dataframe(out, hide_index=True, width="stretch")
+            row_labels = [f"{r.name or r.channel_id} ({r.platform}) – {r.status}" for r in out.itertuples()]
+            sel = st.selectbox("Creator", row_labels)
+            r = out.iloc[row_labels.index(sel)]
+            with st.form("decide"):
+                new_status = st.selectbox("New status", ["asked", "approved", "declined"],
+                                          help="Mark *asked* when you sent the message; *approved* when they said yes.")
+                evidence = st.text_input("Evidence (required for approved)",
+                                         placeholder="e.g. Discord DM from @name, 25-11-2026: 'yes go ahead'")
+                attribution = st.text_input("Credit line they want (optional)")
+                money = st.checkbox("They allow monetization")
+                contact = st.text_input("Contact", r["contact"] or "")
+                if st.form_submit_button("Save", type="primary"):
+                    try:
+                        cr.upsert(r["platform"], r["channel_id"], name=r["name"] or "", contact=contact,
+                                  status=new_status, evidence=evidence, attribution=attribution,
+                                  monetization_allowed=money, notes=r["notes"] or "")
+                        st.success("Saved." + (" Their videos will now be clipped automatically." if new_status == "approved" else ""))
+                        st.rerun()
+                    except ValueError as ex:
+                        st.error(str(ex))
+
+    with tab_add:
+        st.caption("Add a creator manually, or change anyone's status (also to *revoked* if they withdraw permission).")
+        with st.form("add_creator"):
+            c1, c2 = st.columns(2)
+            platform = c1.selectbox("Platform", cr.PLATFORMS)
+            ident = c2.text_input("Channel", placeholder="YouTube: @handle, UC… id or URL · Twitch: login name")
+            name = c1.text_input("Display name (optional)")
+            contact = c2.text_input("Contact (e-mail, Discord, …)")
+            status = c1.selectbox("Status", cr.STATUSES, index=0)
+            money = c2.checkbox("They allow monetization")
+            evidence = st.text_input("Evidence (required for approved)")
+            attribution = st.text_input("Credit line they want (optional)")
+            if st.form_submit_button("Save creator", type="primary"):
+                try:
+                    cid, found_name = (_resolve_youtube_channel(ident) if platform == "youtube" else (ident, ""))
+                    cr.upsert(platform, cid, name=name or found_name, contact=contact, status=status,
+                              evidence=evidence, attribution=attribution, monetization_allowed=money)
+                    st.success(f"Saved {name or found_name or cid}.")
+                except Exception as ex:
+                    st.error(str(ex))
+        allc = df("SELECT platform, channel_id, name, status, evidence, decided_at FROM creators ORDER BY updated_at DESC")
+        if not allc.empty:
+            st.dataframe(allc, hide_index=True, width="stretch")
+
+    with tab_msg:
+        c1, c2, c3 = st.columns(3)
+        who = c1.text_input("Creator name", "")
+        mine = c2.text_input("Your channel", db.get_setting("my_channel_name") or "Five Star Moments")
+        lang = c3.radio("Language", ["nl", "en"], horizontal=True)
+        if mine != (db.get_setting("my_channel_name") or ""):
+            db.set_setting("my_channel_name", mine)
+        st.code(cr.message_template(who, mine, lang), language=None, wrap_lines=True)
+        st.caption("Send it by e-mail (often in the channel's About section), Discord or a DM. "
+                   "Save a screenshot of their answer – that's your evidence.")
+
+
 PAGES = {"📊 Overview": page_overview, "🔌 Connections": page_connections, "📝 Review queue": page_review, "🎞 Clips": page_clips,
-         "🔎 Sources & rights": page_sources, "📈 Analytics": page_analytics, "💸 Costs & logs": page_costs_logs,
+         "🤝 Creators": page_creators, "🔎 Sources & rights": page_sources, "📈 Analytics": page_analytics, "💸 Costs & logs": page_costs_logs,
          "⚙️ Settings": page_settings, "⚖️ Compliance": page_compliance}
 
 with st.sidebar:

@@ -155,7 +155,17 @@ It is free and private, but slower than Gemini (roughly 20–60 s per source vid
 Register an app at dev.twitch.tv and set `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`. Clips from
 broadcasters in `AUTHORIZED_TWITCH_BROADCASTERS` are processable. All others are leads.
 
-### 5. Authorized creators
+### 5. Clipping other creators (with permission)
+Dashboard → **🤝 Creators**:
+1. **Suggestions** lists popular channels the bot discovered. Add the ones you like to your outreach list.
+2. **Message** generates a permission request (Dutch or English). Send it by e-mail, Discord or DM.
+3. When a creator says yes, set them to **approved** and record the evidence (where and when they said yes).
+   From then on, all their existing and future videos and clips are marked *authorized*, credited
+   automatically, and clipped and posted by the bot. Set them to **revoked** and everything that isn't published yet is stopped.
+4. To download their videos, turn on **🔌 Connections → 4 · Downloads** (yt-dlp). It is only ever used for approved creators.
+   Platform terms restrict downloading, so asking creators for the files and using `data/inbox` is the cleanest route.
+
+### 5b. Authorized creators via .env (legacy)
 Put channel IDs or Twitch logins you have **written permission** from into `AUTHORIZED_*`, and record
 the evidence per source in **Sources & rights**. Authorized sources with no evidence on file are treated as high risk and cannot be approved.
 
@@ -253,7 +263,7 @@ This is engineering guidance, not legal advice.
 ## Testing
 
 ```bash
-pytest -q          # 32 tests, about 1 minute (uses FFmpeg; no network or API keys needed)
+pytest -q          # 37 tests, about 1 minute (uses FFmpeg; no network or API keys needed)
 ```
 The suite covers the silence-removal timeline, subtitle generation, crop expressions, rights gates,
 YouTube discovery (mocked API, CC detection, quota accounting), quota exhaustion, the inbox with rights
