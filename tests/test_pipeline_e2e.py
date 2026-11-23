@@ -30,7 +30,8 @@ def test_full_pipeline(tmp_path):
     assert (info["width"], info["height"]) == (1080, 1920)
     assert 20 <= info["duration"] <= 45 and info["has_audio"]
     qc = json.loads(clip["qc_json"])
-    assert all(v["ok"] for v in qc.values()), qc
+    assert all(v["ok"] for v in qc.values() if v["blocking"]), qc
+    assert qc["no_background_music"]["ok"] is False  # constant test tone under the "speech" is detected
     assert clip["status"] == "pending_approval"   # manual approval is the default
     assert clip["title"] and "#shorts" in clip["description"]
     pipeline.set_clip_decision(clip["id"], True, commentary="My take: systems beat motivation.")

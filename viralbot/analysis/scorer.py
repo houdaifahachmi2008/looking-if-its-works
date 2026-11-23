@@ -104,6 +104,15 @@ def analyze_source(source: dict, transcript: dict, settings: dict) -> list[dict]
         cands.append({"start": s, "end": e, "text": text, "heur": h,
                       "heur_total": sum(h[k] for k in RUBRIC_MAX)})
 
+    # audience as jury: windows viewers pointed at (comment timestamps / viewer clips) get priority
+    crowd_sc = [0.0] * len(cands)
+    if settings.get("use_crowd_signals", True):
+        from .. import crowd
+        crowd_sc = crowd.window_scores(crowd.load(source["id"]), [(c["start"], c["end"]) for c in cands])
+    for c, cs in zip(cands, crowd_sc):
+        c["crowd"] = round(cs, 2)
+        c["heur_total"] += 15 * cs
+
     # pre-rank with heuristics, keep diverse shortlist
     shortlist = non_max_suppression(cands, "heur_total", max_overlap=0.5)[:LLM_SHORTLIST]
 
@@ -121,6 +130,9 @@ def analyze_source(source: dict, transcript: dict, settings: dict) -> list[dict]
         for k, hi in RUBRIC_MAX.items():
             lv = _clamp(L.get(k), hi) if L and k != "quality" else None
             scores[k] = round(LLM_WEIGHT * lv + (1 - LLM_WEIGHT) * h[k], 1) if lv is not None else h[k]
+        if c.get("crowd"):
+            scores["entertainment"] = round(min(25.0, scores["entertainment"] + 6 * c["crowd"]), 1)
+            scores["retention"] = round(min(20.0, scores["retention"] + 4 * c["crowd"]), 1)
         c["scores"] = scores
         c["viral_score"] = round(sum(scores.values()), 1)
         c["hook_type"] = (L or {}).get("hook_type") or h["hook_type"]
@@ -130,6 +142,8 @@ def analyze_source(source: dict, transcript: dict, settings: dict) -> list[dict]
         c["emphasis"] = (L or {}).get("emphasis_words") or heuristics.emphasis_words(c["text"])
         c["hook_text"] = ((L or {}).get("hook_text") or "").strip()[:60]
         c["scored_by"] = "llm+heuristic" if L else "heuristic"
+        if c.get("crowd", 0) >= 0.5:
+            c["reason"] = f"👥 viewers pointed at this moment ({int(c['crowd'] * 100)}%) · " + c["reason"]
         if L and L.get("context_ok") is False:
             c["viral_score"] = min(c["viral_score"], 40.0)
             c["reason"] = "context risk: " + c["reason"]
@@ -154,7 +168,8 @@ def analyze_source(source: dict, transcript: dict, settings: dict) -> list[dict]
                    score_reason,hook_type,topic,emphasis_words,hook_text,status,created_at,updated_at)
                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (source["id"], c["start"], c["end"], round(c["end"] - c["start"], 2), c["text"],
-             json.dumps({**c["scores"], "heuristic": c["heur"], "scored_by": c["scored_by"], "adjustment": c["adjustment"]}),
+             json.dumps({**c["scores"], "heuristic": c["heur"], "scored_by": c["scored_by"], "adjustment": c["adjustment"],
+                        "crowd": c.get("crowd", 0)}),
              c["viral_score"], c["adjusted_score"], c["reason"], c["hook_type"], c["topic"],
              json.dumps(c["emphasis"]), c["hook_text"], status, db.now(), db.now()))
         c["id"] = cid

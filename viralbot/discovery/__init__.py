@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from .. import db
 from ..logging_setup import get_logger
-from . import local_inbox, twitch, youtube
+from . import drive, local_inbox, twitch, youtube
 from .store import upsert_source
 
 log = get_logger("discovery")
-PROVIDERS = {"local_inbox": local_inbox.discover, "youtube": youtube.discover, "twitch": twitch.discover}
+PROVIDERS = {"local_inbox": local_inbox.discover, "drive": drive.discover, "youtube": youtube.discover,
+             "twitch": twitch.discover}
 
 
 def run_discovery(settings: dict | None = None) -> dict:

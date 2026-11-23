@@ -196,3 +196,140 @@ def message_template(name: str, my_channel: str, lang: str = "nl") -> str:
             f"Would you be OK with me clipping your content and posting it on my channel? And is it fine if "
             f"the channel is monetized?\n\n"
             f"Thanks!")
+
+
+# ------------------------------------------------------------------ Drive folder
+def set_drive_folder(platform: str, channel_id: str, link: str) -> None:
+    from .discovery.drive import folder_id
+    link = (link or "").strip()
+    if link and not folder_id(link):
+        raise ValueError("That doesn't look like a Google Drive folder link")
+    db.ex("UPDATE creators SET drive_folder=?, updated_at=? WHERE platform=? AND channel_id=?",
+          (link, db.now(), platform, _norm(platform, channel_id)))
+
+
+# ------------------------------------------------------------------ follow-ups
+def followups_due(days: int = 5, max_followups: int = 2) -> list[dict]:
+    """Creators you asked > `days` ago (or last followed up > `days` ago) without an answer."""
+    from datetime import datetime, timedelta, timezone
+    init()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).replace(microsecond=0).isoformat()
+    rows = db.q("""SELECT * FROM creators WHERE status='asked' AND COALESCE(followups,0) < ?
+                   AND COALESCE(last_followup_at, asked_at) < ? ORDER BY asked_at""", (max_followups, cutoff))
+    return [dict(r) for r in rows]
+
+
+def mark_followed_up(creator_id: int) -> None:
+    db.ex("UPDATE creators SET followups=COALESCE(followups,0)+1, last_followup_at=?, updated_at=? WHERE id=?",
+          (db.now(), db.now(), creator_id))
+
+
+def followup_template(name: str, my_channel: str, lang: str = "nl") -> str:
+    name = (name or "").strip()
+    if lang == "nl":
+        return (f"Hoi{' ' + name if name else ''}! Even een vriendelijke herinnering aan mijn bericht van vorige week 🙂\n\n"
+                f"Ik zou graag korte clips van je content maken voor mijn Shorts-kanaal {my_channel}, altijd met jouw "
+                f"naam en een link naar je kanaal. Een simpel 'ja' of 'nee' is helemaal oké!\n\nGroetjes!")
+    return (f"Hi{' ' + name if name else ''}! Just a friendly follow-up on my message from last week 🙂\n\n"
+            f"I'd love to make short clips of your content for my Shorts channel {my_channel}, always crediting you "
+            f"with a link to your channel. A simple yes or no is totally fine!\n\nThanks!")
+
+
+# ------------------------------------------------------------------ scouting
+def refresh_channel_stats(channel_ids: list[str]) -> int:
+    """Subscriber counts for YouTube channels (1 quota unit per 50 channels)."""
+    from .config import env
+    from .discovery.youtube import _get
+    if not env().youtube_api_key or not channel_ids:
+        return 0
+    n = 0
+    for i in range(0, len(channel_ids), 50):
+        data = _get("channels", {"part": "statistics", "id": ",".join(channel_ids[i:i + 50])})
+        for it in data.get("items", []):
+            st = it.get("statistics", {})
+            subs = None if st.get("hiddenSubscriberCount") else int(st.get("subscriberCount") or 0)
+            db.ex("INSERT INTO channel_stats(platform,channel_id,subscribers,video_count,updated_at) VALUES('youtube',?,?,?,?) "
+                  "ON CONFLICT(platform,channel_id) DO UPDATE SET subscribers=excluded.subscribers, "
+                  "video_count=excluded.video_count, updated_at=excluded.updated_at",
+                  (it["id"], subs, int(st.get("videoCount") or 0), db.now()))
+            n += 1
+    return n
+
+
+def scout(limit: int = 50, min_subs: int | None = None, max_subs: int | None = None, refresh: bool = True) -> list[dict]:
+    """Suggestions enriched with subscribers and a 'clipability' estimate, sorted by fit.
+
+    clipability (0-1): long videos/streams = lots of talking material to clip from.
+    fit = discovery score (trend) + 40 × clipability, with a bonus for the sweet spot of
+    10k–500k subscribers (big enough to be interesting, small enough to say yes).
+    """
+    sug = suggestions(limit * 2)
+    if refresh:
+        missing = [s["cid"] for s in sug if s["platform"] == "youtube" and not db.q1(
+            "SELECT 1 FROM channel_stats WHERE platform='youtube' AND channel_id=? "
+            "AND updated_at > datetime('now','-7 day')", (s["cid"],))]
+        try:
+            refresh_channel_stats(missing)
+        except Exception:
+            pass
+    out = []
+    for s in sug:
+        row = db.q1("SELECT subscribers FROM channel_stats WHERE platform=? AND channel_id=?", (s["platform"], s["cid"]))
+        subs = row["subscribers"] if row else None
+        avg = db.scalar("SELECT AVG(duration_s) FROM sources WHERE platform=? AND "
+                        "(channel_id=? OR lower(channel_title)=?)", (s["platform"], s["cid"], s["cid"]), 0) or 0
+        clip = round(min(1.0, float(avg) / 1800), 2)
+        if min_subs is not None and subs is not None and subs < min_subs:
+            continue
+        if max_subs is not None and subs is not None and subs > max_subs:
+            continue
+        sweet = 10 if subs is not None and 10_000 <= subs <= 500_000 else 0
+        out.append({**s, "subscribers": subs, "avg_minutes": round(float(avg) / 60, 1), "clipability": clip,
+                    "fit": round(float(s["best_score"] or 0) + 40 * clip + sweet, 1)})
+    out.sort(key=lambda x: -x["fit"])
+    return out[:limit]
+
+
+# ------------------------------------------------------------------ reports
+def report(creator_id: int, days: int = 30) -> dict:
+    c = dict(db.q1("SELECT * FROM creators WHERE id=?", (creator_id,)))
+    if c["platform"] == "twitch":
+        src_filter, params = "s.platform IN ('twitch','drive') AND (lower(s.channel_title)=? OR s.channel_id=?)", \
+            (c["channel_id"], c["channel_id"])
+    else:
+        src_filter, params = "s.platform IN ('youtube','drive') AND s.channel_id=?", (c["channel_id"],)
+    rows = [dict(r) for r in db.q(f"""
+        SELECT c.title, u.youtube_video_id, u.uploaded_at, a.views, a.likes, a.comments, a.subscribers_gained
+        FROM uploads u JOIN clips c ON c.id=u.clip_id JOIN sources s ON s.id=c.source_id
+        LEFT JOIN analytics a ON a.id=(SELECT MAX(id) FROM analytics WHERE upload_id=u.id)
+        WHERE u.status='uploaded' AND u.uploaded_at >= datetime('now', ?) AND {src_filter}
+        ORDER BY a.views DESC""", (f"-{days} day", *params))]
+    views = sum(r["views"] or 0 for r in rows)
+    return {"creator": c, "days": days, "shorts": len(rows), "views": views,
+            "likes": sum(r["likes"] or 0 for r in rows), "comments": sum(r["comments"] or 0 for r in rows),
+            "top": rows[0] if rows else None, "rows": rows}
+
+
+def _n(x: int, lang: str) -> str:
+    s = f"{int(x or 0):,}"
+    return s.replace(",", ".") if lang == "nl" else s
+
+
+def report_text(rep: dict, my_channel: str, lang: str = "nl") -> str:
+    c, top = rep["creator"], rep["top"]
+    name = c.get("name") or c["channel_id"]
+    if lang == "nl":
+        top_line = f"\n• Best presterende clip: \"{top['title']}\" – {_n(top['views'], lang)} weergaven" if top else ""
+        return (f"Hoi {name}! Hier je update van de afgelopen {rep['days']} dagen op {my_channel}:\n\n"
+                f"• {rep['shorts']} Shorts met jouw content geplaatst\n"
+                f"• {_n(rep['views'], lang)} weergaven in totaal\n"
+                f"• {_n(rep['likes'], lang)} likes en {_n(rep['comments'], lang)} reacties{top_line}\n\n"
+                f"Elke Short linkt naar jouw kanaal. Bedankt dat ik je content mag clippen! "
+                f"Laat het weten als je bepaalde momenten wel of juist niet geclipt wilt hebben.")
+    top_line = f"\n• Best performing clip: \"{top['title']}\" – {_n(top['views'], lang)} views" if top else ""
+    return (f"Hi {name}! Here's your update for the last {rep['days']} days on {my_channel}:\n\n"
+            f"• {rep['shorts']} Shorts posted with your content\n"
+            f"• {_n(rep['views'], lang)} views in total\n"
+            f"• {_n(rep['likes'], lang)} likes and {_n(rep['comments'], lang)} comments{top_line}\n\n"
+            f"Every Short links back to your channel. Thanks for letting me clip your content! "
+            f"Let me know if there are moments you'd like (or not like) to see clipped.")

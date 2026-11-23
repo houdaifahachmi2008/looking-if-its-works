@@ -171,6 +171,16 @@ DEFAULT_SETTINGS: dict = {
     "upload_slots_utc": ["15:00", "18:00", "21:00"],
     "set_custom_thumbnail": False,
     "default_category_id": "24",     # Entertainment
+    # --- creators / clipping with permission
+    "use_crowd_signals": True,        # comment timestamps + Twitch viewer clips steer clip selection
+    "skip_creator_shorts": True,      # never re-post a creator's own Shorts
+    "credit_overlay": True,           # "🎙 @creator" label in the first seconds of third-party clips
+    "end_card_text": "Follow for more!",  # shown in the last 2 s ("" = off)
+    "post_credit_comment": False,     # auto-comment with credit under each upload (needs re-login once)
+    "credit_comment_text": "🎙 Credit: {credit}\n⭐ Rate this moment 1–5 and follow for more!",
+    "followup_after_days": 5,
+    "scout_min_subscribers": 10000,
+    "scout_max_subscribers": 500000,
     # --- analytics / learning
     "analytics_interval_hours": 6,
     "learning_min_samples": 5,

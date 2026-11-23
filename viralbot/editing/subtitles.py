@@ -24,6 +24,14 @@ def _clean(word: str) -> str:
     return w
 
 
+_EMOJI = __import__("re").compile("[\U0001F000-\U0001FAFF\u2300-\u23FF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]")
+
+
+def _overlay(text: str) -> str:
+    """Overlay text without emoji (most video fonts can't draw them) and ASS control chars."""
+    return " ".join(_EMOJI.sub("", _clean(text)).split())
+
+
 def _norm(word: str) -> str:
     return re.sub(r"[^a-z0-9']", "", word.lower())
 
@@ -44,7 +52,8 @@ def group_words(words: list[dict], max_words: int = 3, max_chars: int = 18, max_
 
 
 def build_ass(words: list[dict], timeline: Timeline, emphasis: list[str], *, font: str, banner: str = "",
-              words_per_line: int = 3, width: int = 1080, height: int = 1920) -> str:
+              words_per_line: int = 3, width: int = 1080, height: int = 1920, credit: str = "",
+              end_card: str = "") -> str:
     # move words onto the output timeline (words inside cuts don't exist by construction)
     out_words = []
     lo, hi = timeline.keeps[0][0] - 0.05, timeline.keeps[-1][1] + 0.05
@@ -75,13 +84,21 @@ ScaledBorderAndShadow: yes
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Sub,{font},92,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,-1,0,0,0,100,100,1,0,1,7,3,2,60,60,560,1
 Style: Banner,{font},62,&H00FFFFFF,&H00FFFFFF,&H00000000,&HB4141414,-1,0,0,0,100,100,0,0,3,18,0,8,90,90,170,1
+Style: Credit,{font},44,&H00FFFFFF,&H00FFFFFF,&H00000000,&H8C000000,-1,0,0,0,100,100,0,0,3,12,0,7,60,60,330,1
+Style: EndCard,{font},70,&H00FFFFFF,&H00FFFFFF,&H00000000,&HC8881F7C,-1,0,0,0,100,100,0,0,3,24,0,5,80,80,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = []
+    total = timeline.duration
+    if credit:  # creator credit, first 4 seconds, fades out
+        lines.append(f"Dialogue: 2,{_ts(0.2)},{_ts(min(4.2, total))},Credit,,0,0,0,,{{\\fad(250,400)}}via {_overlay(credit)}")
+    if end_card and total > 6:  # end card in the last 2 seconds
+        lines.append(f"Dialogue: 3,{_ts(total - 2.0)},{_ts(total)},EndCard,,0,0,0,,"
+                     f"{{\\fad(200,0)\\fscx90\\fscy90\\t(0,200,\\fscx100\\fscy100)}}{_overlay(end_card).upper()}")
     if banner:
-        lines.append(f"Dialogue: 1,{_ts(0)},{_ts(timeline.duration)},Banner,,0,0,0,,{_clean(banner)}")
+        lines.append(f"Dialogue: 1,{_ts(0)},{_ts(timeline.duration)},Banner,,0,0,0,,{_overlay(banner)}")
 
     for g in group_words(out_words, max_words=words_per_line):
         g_start = g[0]["s"]

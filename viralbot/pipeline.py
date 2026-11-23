@@ -96,6 +96,9 @@ def stage_analyze(settings: dict, limit: int = 5) -> int:
             continue
         try:
             tr = load_transcript(s["id"]) or {"words": [], "segments": []}
+            if settings.get("use_crowd_signals", True) and s["platform"] in ("youtube", "twitch"):
+                from . import crowd
+                crowd.collect(s)
             made += len(analyze_source(s, tr, settings))
             db.update("sources", s["id"], status="analyzed", lease_at=None, error=None)
         except Exception as ex:

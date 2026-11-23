@@ -73,6 +73,29 @@ def _clip_item(c: dict, topic: str) -> dict:
     return item
 
 
+def _vod_item(v: dict) -> dict:
+    from ..creators import rights_for_item
+    from ..crowd import parse_twitch_duration
+    approved = rights_for_item("twitch", v.get("user_id"), v.get("user_login"))
+    listed = (v.get("user_login") or "").lower() in env().authorized_twitch_broadcasters or \
+        v.get("user_id", "") in env().authorized_twitch_broadcasters
+    item = {
+        "platform": "twitch", "external_id": "v" + str(v["id"]), "url": v.get("url"), "title": v.get("title", ""),
+        "channel_id": v.get("user_id"), "channel_title": v.get("user_login") or v.get("user_name", ""),
+        "published_at": v.get("created_at"), "duration_s": parse_twitch_duration(v.get("duration")),
+        "views": int(v.get("view_count") or 0), "likes": 0, "comments": 0, "topic": "twitch:vod",
+        "raw": {"kind": "vod", "vod_id": str(v["id"]), "user_id": v.get("user_id"), "created_at": v.get("created_at"),
+                "duration": v.get("duration")},
+        "rights_status": "authorized" if (approved or listed) else "unknown",
+    }
+    if approved:
+        item.update(approved)
+    elif listed:
+        item["rights_evidence"] = "Broadcaster listed in AUTHORIZED_TWITCH_BROADCASTERS (keep written permission on file)"
+        item["attribution"] = f"Stream by {item['channel_title']} – https://twitch.tv/{item['channel_title']}"
+    return item
+
+
 def discover(settings: dict) -> list[dict]:
     e = env()
     if not (e.twitch_client_id and e.twitch_client_secret):
@@ -93,6 +116,9 @@ def discover(settings: dict) -> list[dict]:
             for bid in ids:
                 for c in _get("clips", {"broadcaster_id": bid, "started_at": started, "first": 20}).get("data", []):
                     out.append(_clip_item(c, "twitch:authorized"))
+                # full streams (VODs): best moments are found with the help of viewers' clips (crowd signals)
+                for v in _get("videos", {"user_id": bid, "type": "archive", "first": 5}).get("data", []):
+                    out.append(_vod_item(v))
         # trending clips per game (leads unless authorized)
         names = settings.get("twitch_game_names", [])
         if names:

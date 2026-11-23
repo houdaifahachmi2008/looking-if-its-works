@@ -10,7 +10,8 @@ def isolated(tmp_path, monkeypatch):
     """Each test gets its own data dir + database, and no real API keys."""
     monkeypatch.setenv("VIRALBOT_DATA_DIR", str(tmp_path / "data"))
     for k in ("GEMINI_API_KEY", "OPENAI_API_KEY", "YOUTUBE_API_KEY", "TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET",
-              "AUTHORIZED_YOUTUBE_CHANNELS", "OWNED_YOUTUBE_CHANNELS", "AUTHORIZED_TWITCH_BROADCASTERS"):
+              "AUTHORIZED_YOUTUBE_CHANNELS", "OWNED_YOUTUBE_CHANNELS", "AUTHORIZED_TWITCH_BROADCASTERS",
+              "OLLAMA_MODEL", "ENABLE_YTDLP"):
         monkeypatch.setenv(k, "")
     monkeypatch.setenv("TRANSCRIBE_ENGINE", "none")
     from viralbot import config, db

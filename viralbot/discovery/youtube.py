@@ -143,7 +143,11 @@ def discover(settings: dict) -> list[dict]:
     from ..creators import approved_ids
     for ch in dict.fromkeys(e.owned_youtube_channels + e.authorized_youtube_channels + approved_ids("youtube")):
         try:
-            results += channel_uploads(ch)
+            ups = channel_uploads(ch)
+            if settings.get("skip_creator_shorts", True) and ch not in e.owned_youtube_channels:
+                # their own Shorts are already short-form – re-posting them adds nothing and duplicates them
+                ups = [u for u in ups if (u.get("duration_s") or 0) > 180]
+            results += ups
         except QuotaExceeded as ex:
             log.warning("quota: %s", ex)
             return results

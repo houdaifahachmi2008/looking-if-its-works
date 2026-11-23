@@ -205,11 +205,46 @@ def close() -> None:
         _local.conn = None
 
 
+EXTRA_SCHEMA = """
+-- "audience as jury": moments viewers pointed at (comment timestamps, viewer clips)
+CREATE TABLE IF NOT EXISTS crowd_signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    t REAL NOT NULL,            -- seconds into the source
+    dur REAL DEFAULT 0,         -- length of the pointed-at moment (viewer clips), 0 = single point
+    weight REAL NOT NULL,
+    kind TEXT,                  -- comment | twitch_clip
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_crowd_source ON crowd_signals(source_id);
+CREATE TABLE IF NOT EXISTS channel_stats (
+    platform TEXT NOT NULL, channel_id TEXT NOT NULL,
+    subscribers INTEGER, video_count INTEGER, updated_at TEXT,
+    PRIMARY KEY(platform, channel_id)
+);
+"""
+
+# columns added after the first release – added in place so existing databases keep working
+MIGRATIONS = {
+    "creators": {"drive_folder": "TEXT", "followups": "INTEGER DEFAULT 0", "last_followup_at": "TEXT"},
+}
+
+
+def ensure_columns(conn: sqlite3.Connection, table: str, cols: dict[str, str]) -> None:
+    have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    for name, decl in cols.items():
+        if name not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+
 def init_db() -> None:
     conn = connect()
     conn.executescript(SCHEMA)
     from .creators import SCHEMA as CREATORS_SCHEMA
     conn.executescript(CREATORS_SCHEMA)
+    conn.executescript(EXTRA_SCHEMA)
+    for table, cols in MIGRATIONS.items():
+        ensure_columns(conn, table, cols)
 
 
 @contextmanager

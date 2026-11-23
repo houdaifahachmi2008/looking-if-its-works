@@ -12,6 +12,35 @@ log = get_logger("quality")
 DUP_PHASH_DISTANCE = 8.0  # mean Hamming distance (0-64) below which two clips are "the same"
 
 
+def background_audio(clip: dict, source: dict) -> tuple[bool, str]:
+    """Heuristic music detector: if the pauses *between* spoken words are almost as
+    loud as the speech itself, something is playing underneath (music, game radio,
+    stream audio) – a common cause of Content ID claims."""
+    import numpy as np
+
+    from .config import env
+    from .media import rms_envelope
+    from .transcription import load_transcript
+
+    wav = env().dir("work") / f"src_{source['id']}.wav"
+    tr = load_transcript(source["id"]) or {}
+    words = [w for w in tr.get("words", []) if clip["start_s"] - 0.05 <= w["s"] <= clip["end_s"] + 0.05]
+    if not wav.exists() or len(words) < 8:
+        return False, "not enough speech to judge"
+    env_db, hop = rms_envelope(wav)
+    t = np.arange(len(env_db)) * hop
+    win = (t >= clip["start_s"]) & (t <= clip["end_s"])
+    speech = np.zeros_like(win)
+    for w in words:
+        speech |= (t >= w["s"]) & (t <= w["e"])
+    gaps = win & ~speech
+    if gaps.sum() * hop < 2.0 or (win & speech).sum() == 0:
+        return False, "too few pauses to judge"
+    sp, gp = float(np.median(env_db[win & speech])), float(np.median(env_db[gaps]))
+    diff = sp - gp
+    return diff < 10.0, f"pauses only {diff:.1f} dB quieter than speech" if diff < 10.0 else f"clean pauses ({diff:.1f} dB)"
+
+
 def check_clip(clip: dict, source: dict, settings: dict) -> dict:
     path = clip["file_path"]
     info = probe(path)
@@ -59,6 +88,16 @@ def check_clip(clip: dict, source: dict, settings: dict) -> dict:
         add("not_already_uploaded", False, "identical file already uploaded")
 
     risk, warnings = assess_clip_risk(source, bool((clip.get("commentary") or "").strip()))
+    try:
+        music, detail = background_audio(clip, source)
+    except Exception as ex:  # never block on the detector itself
+        music, detail = False, f"check failed: {ex}"
+    add("no_background_music", not music, detail, blocking=False)
+    if music:
+        warnings.append("Possible background music/audio under the speech – music and game radio often trigger "
+                        "Content ID claims. Listen before approving.")
+        if risk == "low" and source.get("rights_status") != "owned":
+            risk = "medium"
     passed = all(c["ok"] for c in checks.values() if c["blocking"])
     return {"passed": passed, "checks": checks, "risk": risk, "warnings": warnings,
             "content_hash": content_hash, "phash": ph}

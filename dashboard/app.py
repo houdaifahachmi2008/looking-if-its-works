@@ -374,6 +374,18 @@ def page_settings():
         slots = c3.text_input("Slots (UTC, comma separated)", ", ".join(s["upload_slots_utc"]))
         thumb = c2.toggle("Set custom thumbnail (verified channels)", s["set_custom_thumbnail"])
 
+        st.subheader("Clipping other creators")
+        c1, c2, c3 = st.columns(3)
+        crowd_on = c1.toggle("Use audience signals", s["use_crowd_signals"],
+                             help="Comment timestamps ('3:45 😂') and Twitch viewer clips steer which moments are picked")
+        skip_shorts = c1.toggle("Skip creators' own Shorts", s["skip_creator_shorts"])
+        credit_ov = c2.toggle("Creator credit on screen", s["credit_overlay"])
+        end_card = c2.text_input("End card text (last 2 s, empty = off)", s["end_card_text"])
+        credit_cm = c3.toggle("Post credit comment under uploads", s["post_credit_comment"],
+                              help="Public/unlisted uploads only. Needs one new login in Connections. "
+                                   "The API can't pin comments – pin it in YouTube Studio if you want.")
+        followup_days = c3.number_input("Follow-up after (days)", 1, 30, int(s["followup_after_days"]))
+
         if st.form_submit_button("Save settings", type="primary"):
             new = {
                 "sources_enabled": src_new, "youtube_creative_commons_only": cc_only,
@@ -386,6 +398,8 @@ def page_settings():
                 "require_manual_approval": manual, "auto_approve_medium_risk": auto_med, "max_daily_uploads": int(daily),
                 "default_privacy": privacy, "public_publishing_approved": public_ok, "schedule_uploads": sched,
                 "upload_slots_utc": [x.strip() for x in slots.split(",") if x.strip()], "set_custom_thumbnail": thumb,
+                "use_crowd_signals": crowd_on, "skip_creator_shorts": skip_shorts, "credit_overlay": credit_ov,
+                "end_card_text": end_card.strip(), "post_credit_comment": credit_cm, "followup_after_days": int(followup_days),
             }
             for k, v in new.items():
                 db.set_setting(k, v)
@@ -599,34 +613,46 @@ def page_creators():
     cr.init()
     st.title("Creators & permission")
     st.info("Clip other people's content **only with their permission**. Ask creators, record their answer here, "
-            "and ViralBot automatically clips everyone marked **approved** – including all their future videos. "
-            "Declined or revoked creators are stopped immediately.", icon="🤝")
+            "and ViralBot automatically clips everyone marked **approved**, including all their future videos and "
+            "streams. Declined or revoked creators are stopped immediately.", icon="🤝")
+    my_channel = db.get_setting("my_channel_name") or "Five Star Moments"
 
-    ytdlp = env().enable_ytdlp
-    if not ytdlp:
+    if not env().enable_ytdlp:
         st.warning("Downloading approved creators' videos is switched off. Turn it on under "
-                   "🔌 Connections → 4 · Downloads (or ask creators to send you the files and drop them in data/inbox).",
+                   "🔌 Connections → 4 · Downloads, or let creators share a Google Drive folder (best quality).",
                    icon="⬇️")
 
-    approved = df("SELECT platform, channel_id, name, evidence, attribution, monetization_allowed, decided_at "
+    due = cr.followups_due(int(db.get_setting("followup_after_days") or 5))
+    approved = df("SELECT platform, channel_id, name, evidence, drive_folder, monetization_allowed, decided_at "
                   "FROM creators WHERE status='approved' ORDER BY decided_at DESC")
-    st.subheader(f"✅ Approved creators ({len(approved)})")
-    if approved.empty:
-        st.caption("Nobody yet. Start with the suggestions below.")
-    else:
-        st.dataframe(approved, hide_index=True, width="stretch")
+    asked = int(db.scalar("SELECT COUNT(*) FROM creators WHERE status='asked'", (), 0))
+    cols = st.columns(4)
+    kpi(cols[0], "Approved", f"{len(approved)}", "clipped automatically")
+    kpi(cols[1], "Waiting for answer", f"{asked}")
+    kpi(cols[2], "Follow-ups due", f"{len(due)}", "see Outreach tab")
+    to_ask = int(db.scalar("SELECT COUNT(*) FROM creators WHERE status='to_ask'", (), 0))
+    kpi(cols[3], "To ask", f"{to_ask}")
+    st.write("")
 
-    tab_s, tab_o, tab_add, tab_msg = st.tabs(["💡 Suggestions", "📬 Outreach list", "➕ Add / update", "✉️ Message"])
+    tab_s, tab_o, tab_a, tab_add, tab_msg, tab_rep = st.tabs(
+        ["💡 Scout", "📬 Outreach", "✅ Approved", "➕ Add / update", "✉️ Messages", "📊 Reports"])
 
     with tab_s:
-        sug = cr.suggestions(50)
-        st.caption("Popular channels the bot discovered (from leads). Add the ones you like to your outreach list.")
+        st.caption("Channels the bot found while searching, ranked by **fit**: trending + lots of talking material "
+                   "(long videos/streams) + the sweet spot of 10k–500k subscribers (likeliest to say yes).")
+        c1, c2, c3 = st.columns(3)
+        mn = c1.number_input("Min. subscribers", 0, 100_000_000, int(db.get_setting("scout_min_subscribers") or 0), step=5000)
+        mx = c2.number_input("Max. subscribers", 0, 1_000_000_000, int(db.get_setting("scout_max_subscribers") or 0), step=50000)
+        refresh = c3.toggle("Look up subscriber counts", True, help="Costs 1 YouTube quota unit per 50 channels")
+        sug = cr.scout(50, mn or None, mx or None, refresh=refresh)
         if not sug:
-            st.write("No suggestions yet – they appear after discovery has run (needs a YouTube key / Twitch).")
+            st.write("No suggestions yet – they appear after discovery has run (needs a YouTube key and/or Twitch).")
         else:
             sdf = pd.DataFrame(sug)
-            st.dataframe(sdf[["platform", "name", "cid", "videos", "total_views", "best_score", "topic"]],
-                         hide_index=True, width="stretch")
+            st.dataframe(sdf[["fit", "name", "platform", "subscribers", "avg_minutes", "clipability", "videos",
+                              "total_views", "topic"]], hide_index=True, width="stretch",
+                         column_config={"fit": st.column_config.ProgressColumn("fit", min_value=0, max_value=150, format="%.0f"),
+                                        "clipability": st.column_config.ProgressColumn("clipability", min_value=0, max_value=1, format="%.2f")})
             labels = [f"{x['name']} ({x['platform']})" for x in sug]
             pick = st.multiselect("Add to outreach list", labels)
             if st.button("Add selected", disabled=not pick):
@@ -637,10 +663,21 @@ def page_creators():
                 st.rerun()
 
     with tab_o:
-        out = df("SELECT id, platform, channel_id, name, contact, status, asked_at, notes FROM creators "
+        if due:
+            st.subheader(f"⏰ Follow-ups due ({len(due)})")
+            for c in due:
+                with st.expander(f"{c['name'] or c['channel_id']} ({c['platform']}) – asked {str(c['asked_at'])[:10]}, "
+                                 f"{c.get('followups') or 0} follow-up(s) so far"):
+                    lang = st.radio("Language", ["nl", "en"], horizontal=True, key=f"fl{c['id']}")
+                    st.code(cr.followup_template(c["name"] or "", my_channel, lang), language=None, wrap_lines=True)
+                    if st.button("I sent the follow-up", key=f"fu{c['id']}"):
+                        cr.mark_followed_up(c["id"])
+                        st.rerun()
+        out = df("SELECT id, platform, channel_id, name, contact, status, asked_at, followups, notes FROM creators "
                  "WHERE status IN ('to_ask','asked') ORDER BY status DESC, id")
+        st.subheader("Outreach list")
         if out.empty:
-            st.write("Outreach list is empty.")
+            st.write("Outreach list is empty – add creators from the Scout tab.")
         else:
             st.dataframe(out, hide_index=True, width="stretch")
             row_labels = [f"{r.name or r.channel_id} ({r.platform}) – {r.status}" for r in out.itertuples()]
@@ -648,10 +685,12 @@ def page_creators():
             r = out.iloc[row_labels.index(sel)]
             with st.form("decide"):
                 new_status = st.selectbox("New status", ["asked", "approved", "declined"],
-                                          help="Mark *asked* when you sent the message; *approved* when they said yes.")
+                                          help="*asked* when you sent the message · *approved* when they said yes")
                 evidence = st.text_input("Evidence (required for approved)",
                                          placeholder="e.g. Discord DM from @name, 25-11-2026: 'yes go ahead'")
                 attribution = st.text_input("Credit line they want (optional)")
+                drive = st.text_input("Their shared Google Drive folder (optional, best quality)",
+                                      placeholder="https://drive.google.com/drive/folders/…")
                 money = st.checkbox("They allow monetization")
                 contact = st.text_input("Contact", r["contact"] or "")
                 if st.form_submit_button("Save", type="primary"):
@@ -659,13 +698,31 @@ def page_creators():
                         cr.upsert(r["platform"], r["channel_id"], name=r["name"] or "", contact=contact,
                                   status=new_status, evidence=evidence, attribution=attribution,
                                   monetization_allowed=money, notes=r["notes"] or "")
-                        st.success("Saved." + (" Their videos will now be clipped automatically." if new_status == "approved" else ""))
+                        if drive.strip():
+                            cr.set_drive_folder(r["platform"], r["channel_id"], drive)
+                        st.success("Saved." + (" Their videos will now be clipped automatically."
+                                               if new_status == "approved" else ""))
                         st.rerun()
                     except ValueError as ex:
                         st.error(str(ex))
 
+    with tab_a:
+        if approved.empty:
+            st.write("Nobody approved yet.")
+        else:
+            st.dataframe(approved, hide_index=True, width="stretch")
+            stats = df("""SELECT COALESCE(cr.name, s.channel_title) AS creator, COUNT(DISTINCT s.id) AS videos,
+                                 SUM(CASE WHEN c.file_path IS NOT NULL THEN 1 ELSE 0 END) AS clips_made,
+                                 SUM(CASE WHEN c.status='uploaded' THEN 1 ELSE 0 END) AS clips_posted
+                          FROM creators cr JOIN sources s ON (s.channel_id=cr.channel_id OR lower(s.channel_title)=cr.channel_id)
+                          LEFT JOIN clips c ON c.source_id=s.id
+                          WHERE cr.status='approved' GROUP BY cr.id""")
+            if not stats.empty:
+                st.caption("Pipeline per approved creator")
+                st.dataframe(stats, hide_index=True, width="stretch")
+
     with tab_add:
-        st.caption("Add a creator manually, or change anyone's status (also to *revoked* if they withdraw permission).")
+        st.caption("Add a creator manually, or change anyone's status (e.g. *revoked* when they withdraw permission).")
         with st.form("add_creator"):
             c1, c2 = st.columns(2)
             platform = c1.selectbox("Platform", cr.PLATFORMS)
@@ -676,29 +733,58 @@ def page_creators():
             money = c2.checkbox("They allow monetization")
             evidence = st.text_input("Evidence (required for approved)")
             attribution = st.text_input("Credit line they want (optional)")
+            drive = st.text_input("Shared Google Drive folder (optional)")
             if st.form_submit_button("Save creator", type="primary"):
                 try:
                     cid, found_name = (_resolve_youtube_channel(ident) if platform == "youtube" else (ident, ""))
                     cr.upsert(platform, cid, name=name or found_name, contact=contact, status=status,
                               evidence=evidence, attribution=attribution, monetization_allowed=money)
+                    if drive.strip():
+                        cr.set_drive_folder(platform, cid, drive)
                     st.success(f"Saved {name or found_name or cid}.")
                 except Exception as ex:
                     st.error(str(ex))
-        allc = df("SELECT platform, channel_id, name, status, evidence, decided_at FROM creators ORDER BY updated_at DESC")
+        allc = df("SELECT platform, channel_id, name, status, evidence, drive_folder, decided_at FROM creators "
+                  "ORDER BY updated_at DESC")
         if not allc.empty:
             st.dataframe(allc, hide_index=True, width="stretch")
 
     with tab_msg:
         c1, c2, c3 = st.columns(3)
         who = c1.text_input("Creator name", "")
-        mine = c2.text_input("Your channel", db.get_setting("my_channel_name") or "Five Star Moments")
+        mine = c2.text_input("Your channel", my_channel)
         lang = c3.radio("Language", ["nl", "en"], horizontal=True)
-        if mine != (db.get_setting("my_channel_name") or ""):
+        if mine != my_channel:
             db.set_setting("my_channel_name", mine)
+        st.markdown("**First message**")
         st.code(cr.message_template(who, mine, lang), language=None, wrap_lines=True)
+        st.markdown("**Follow-up** (after 5 days without an answer)")
+        st.code(cr.followup_template(who, mine, lang), language=None, wrap_lines=True)
         st.caption("Send it by e-mail (often in the channel's About section), Discord or a DM. "
-                   "Save a screenshot of their answer – that's your evidence.")
+                   "Save a screenshot of their answer – that's your evidence. Ask creators to share a Google Drive "
+                   "folder with their raw videos for the best quality.")
 
+    with tab_rep:
+        st.caption("A short monthly update keeps creators happy – and is your proof when you ask to be paid for clipping.")
+        crs = df("SELECT id, name, channel_id, platform FROM creators WHERE status='approved'")
+        if crs.empty:
+            st.write("No approved creators yet.")
+        else:
+            labels = [f"{r.name or r.channel_id} ({r.platform})" for r in crs.itertuples()]
+            c1, c2, c3 = st.columns(3)
+            pick = c1.selectbox("Creator", labels)
+            days = c2.number_input("Period (days)", 7, 365, 30)
+            lang = c3.radio("Language ", ["nl", "en"], horizontal=True)
+            rep = cr.report(int(crs.iloc[labels.index(pick)]["id"]), int(days))
+            m = st.columns(4)
+            kpi(m[0], "Shorts", f"{rep['shorts']}")
+            kpi(m[1], "Views", f"{rep['views']:,}")
+            kpi(m[2], "Likes", f"{rep['likes']:,}")
+            kpi(m[3], "Comments", f"{rep['comments']:,}")
+            st.write("")
+            st.code(cr.report_text(rep, my_channel, lang), language=None, wrap_lines=True)
+            if rep["rows"]:
+                st.dataframe(pd.DataFrame(rep["rows"]), hide_index=True, width="stretch")
 
 PAGES = {"📊 Overview": page_overview, "🔌 Connections": page_connections, "📝 Review queue": page_review, "🎞 Clips": page_clips,
          "🤝 Creators": page_creators, "🔎 Sources & rights": page_sources, "📈 Analytics": page_analytics, "💸 Costs & logs": page_costs_logs,

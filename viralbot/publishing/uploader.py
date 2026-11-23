@@ -154,6 +154,9 @@ def upload_clip(clip_id: int, settings: dict) -> str:
     vid = response["id"]
     _record_success(clip_id, vid, body["status"]["privacyStatus"], publish_at, clip.get("content_hash"))
 
+    if settings.get("post_credit_comment"):
+        post_credit_comment(yt, vid, source, body["status"]["privacyStatus"], publish_at, settings)
+
     if settings.get("set_custom_thumbnail") and clip.get("thumbnail_path") and Path(clip["thumbnail_path"]).exists():
         try:
             yt.thumbnails().set(videoId=vid, media_body=MediaFileUpload(clip["thumbnail_path"])).execute()
@@ -163,6 +166,37 @@ def upload_clip(clip_id: int, settings: dict) -> str:
     log.info("clip %s uploaded → https://youtube.com/shorts/%s (%s%s)", clip_id, vid, body["status"]["privacyStatus"],
              f", publishAt {publish_at}" if publish_at else "")
     return vid
+
+
+def credit_comment_text(source: dict, settings: dict) -> str:
+    from ..rights import attribution_line
+    credit = attribution_line(source) if source.get("rights_status") != "owned" else ""
+    tmpl = settings.get("credit_comment_text") or "{credit}"
+    lines = [ln for ln in tmpl.split("\n") if credit or "{credit}" not in ln]
+    return "\n".join(lines).format(credit=credit).strip()
+
+
+def post_credit_comment(yt, vid: str, source: dict, privacy: str, publish_at: str | None, settings: dict) -> bool:
+    """Comment under the new Short crediting the creator. YouTube's API cannot *pin* comments –
+    pin it yourself in YouTube Studio if you like. Private/scheduled videos can't receive comments yet."""
+    from .youtube_auth import COMMENT_SCOPE, has_scope
+    if privacy == "private" or publish_at:
+        log.info("credit comment skipped for %s (video is private/scheduled)", vid)
+        return False
+    if not has_scope(COMMENT_SCOPE):
+        log.warning("credit comment needs one new login (Connections → log out → log in with Google)")
+        return False
+    text = credit_comment_text(source, settings)
+    if not text:
+        return False
+    try:
+        yt.commentThreads().insert(part="snippet", body={"snippet": {"videoId": vid, "topLevelComment": {
+            "snippet": {"textOriginal": text[:9000]}}}}).execute()
+        db.record_cost("youtube", "data-api-v3", "credit_comment", 50, "quota", 0.0)
+        return True
+    except Exception as ex:
+        log.warning("credit comment on %s failed: %s", vid, ex)
+        return False
 
 
 def _record_success(clip_id: int, vid: str, privacy: str, publish_at: str | None, content_hash: str | None) -> None:

@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from ..config import env
 
+COMMENT_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"  # posting comments
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
+    COMMENT_SCOPE,
 ]
 
 
@@ -21,7 +23,8 @@ def load_credentials():
     path = env().youtube_token_path
     if not path.exists():
         raise NotAuthorized("YouTube not authorized. Run: python -m viralbot auth-youtube")
-    creds = Credentials.from_authorized_user_file(str(path), SCOPES)
+    # use the scopes that were actually granted (older logins don't have the comment scope)
+    creds = Credentials.from_authorized_user_file(str(path))
     if not creds.valid:
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -43,6 +46,13 @@ def authorize_interactive(port: int = 8765, open_browser: bool = True) -> str:
                                   authorization_prompt_message="Open this URL to authorize ViralBot:\n{url}\n")
     env().youtube_token_path.write_text(creds.to_json())
     return str(env().youtube_token_path)
+
+
+def has_scope(scope: str) -> bool:
+    try:
+        return scope in (load_credentials().scopes or [])
+    except Exception:
+        return False
 
 
 def is_authorized() -> bool:

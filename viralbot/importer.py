@@ -36,7 +36,8 @@ class ImportBlocked(RuntimeError):
 
 
 def _download_http(url: str, dst: Path) -> Path:
-    with requests.get(url, stream=True, timeout=60) as r:
+    params = {"key": env().youtube_api_key} if "googleapis.com/drive/" in url else None
+    with requests.get(url, params=params, stream=True, timeout=60) as r:
         r.raise_for_status()
         ctype = r.headers.get("content-type", "")
         if "text/html" in ctype:
@@ -95,7 +96,7 @@ def import_source(source: dict) -> Path:
                                     "and drop it into data/inbox, or enable yt-dlp for rights-cleared sources.")
             path = _download_ytdlp(url, media_dir, stem)
         elif url.startswith(("http://", "https://")):
-            ext = Path(urlparse(url).path).suffix or ".mp4"
+            ext = (Path(urlparse(url).path).suffix if "googleapis.com/drive/" not in url else "") or ".mp4"
             path = _download_http(url, media_dir / f"{stem}{ext}")
         else:
             raise ImportBlocked("source has no importable location")

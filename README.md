@@ -263,7 +263,7 @@ This is engineering guidance, not legal advice.
 ## Testing
 
 ```bash
-pytest -q          # 37 tests, about 1 minute (uses FFmpeg; no network or API keys needed)
+pytest -q          # 51 tests, about 1 minute (uses FFmpeg; no network or API keys needed)
 ```
 The suite covers the silence-removal timeline, subtitle generation, crop expressions, rights gates,
 YouTube discovery (mocked API, CC detection, quota accounting), quota exhaustion, the inbox with rights

@@ -33,6 +33,16 @@ class RenderResult:
     face_ratio: float
 
 
+def credit_label(source: dict) -> str:
+    """Short on-screen credit, e.g. '@CoolStreamer' or 'Clutch King'."""
+    name = (source.get("channel_title") or "").strip()
+    if not name:
+        return ""
+    if source.get("platform") == "twitch":
+        return f"twitch.tv/{name.lower()}"
+    return name if name.startswith("@") else f"@{name.replace(' ', '')}" if len(name) <= 24 else name[:24]
+
+
 def _zoom_expr(style: str, switch_points: list[float], total: float) -> str | None:
     if style == "none":
         return None
@@ -83,8 +93,12 @@ def render_clip(clip: dict, source: dict, transcript: dict, settings: dict) -> R
 
     emphasis = json.loads(clip.get("emphasis_words") or "[]")
     banner = (clip.get("commentary") or clip.get("hook_text") or "").strip() if settings.get("add_hook_banner", True) else ""
+    credit = ""
+    if settings.get("credit_overlay", True) and source.get("rights_status") != "owned":
+        credit = credit_label(source)
     ass = build_ass(words, timeline, emphasis, font=env().subtitle_font, banner=banner,
-                    words_per_line=int(settings.get("subtitle_words_per_line", 3)))
+                    words_per_line=int(settings.get("subtitle_words_per_line", 3)), credit=credit,
+                    end_card=(settings.get("end_card_text") or "").strip())
     (out_dir / "subs.ass").write_text(ass, encoding="utf-8")
 
     seek = max(0.0, timeline.keeps[0][0] - 2.0)
