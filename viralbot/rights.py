@@ -74,6 +74,8 @@ def assess_clip_risk(source: dict, has_commentary: bool) -> tuple[str, list[str]
         warnings.append(f"BLOCKED: rights status is '{status}'. Do not publish without owning or licensing this content.")
     if status == "creative_commons":
         warnings.append("CC BY content: attribution is mandatory and is added to the description automatically.")
+        warnings.append("The CC label on YouTube is self-declared by the uploader. Verify the uploader actually owns "
+                        "the footage (re-uploads of TV, sports, esports or music are common) before approving.")
         warnings.append("Monetization: YouTube's 'reused content' policy can demonetize channels that mostly "
                         "repost others' material, even when licensed. Add original commentary or analysis.")
     if status == "authorized":

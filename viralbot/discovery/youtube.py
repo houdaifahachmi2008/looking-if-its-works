@@ -99,7 +99,7 @@ def video_details(ids: list[str]) -> list[dict]:
     return out
 
 
-def search_topic(topic: str, lookback_days: int, max_results: int, cc_only: bool) -> list[dict]:
+def search_topic(topic: str, lookback_days: int, max_results: int, cc_only: bool, min_views: int = 0) -> list[dict]:
     after = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     params = {"part": "id", "q": topic, "type": "video", "order": "viewCount", "publishedAfter": after,
               "maxResults": min(50, max_results), "relevanceLanguage": "en", "safeSearch": "moderate",
@@ -111,7 +111,8 @@ def search_topic(topic: str, lookback_days: int, max_results: int, cc_only: bool
     items = video_details(ids) if ids else []
     for it in items:
         it["topic"] = topic
-    return items
+    # trend search: ignore videos without real reach (owned/authorized channels are never filtered)
+    return [it for it in items if it["views"] >= min_views or it["rights_status"] in {"owned", "authorized"}]
 
 
 def channel_uploads(channel_id: str, max_results: int = 15) -> list[dict]:
@@ -150,7 +151,8 @@ def discover(settings: dict) -> list[dict]:
         try:
             results += search_topic(topic, settings["discovery_lookback_days"],
                                     settings["discovery_max_results_per_topic"],
-                                    settings.get("youtube_creative_commons_only", True))
+                                    settings.get("youtube_creative_commons_only", True),
+                                    int(settings.get("discovery_min_views", 1000)))
         except QuotaExceeded as ex:
             log.warning("quota: %s", ex)
             break

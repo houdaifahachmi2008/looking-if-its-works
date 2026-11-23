@@ -347,6 +347,7 @@ def page_settings():
         interval = c3.number_input("Discovery every (hours)", 1, 48, int(s["discovery_interval_hours"]))
         lookback = c4.number_input("Look back (days)", 1, 30, int(s["discovery_lookback_days"]))
         per_topic = c5.number_input("Results per topic", 1, 50, int(s["discovery_max_results_per_topic"]))
+        min_views = c3.number_input("Min. views (search results)", 0, 10_000_000, int(s["discovery_min_views"]), step=500)
 
         st.subheader("Clip selection & editing")
         c1, c2, c3 = st.columns(3)
@@ -379,7 +380,7 @@ def page_settings():
                 "topics": [t.strip() for t in topics.splitlines() if t.strip()],
                 "twitch_game_names": [g.strip() for g in games.split(",") if g.strip()],
                 "discovery_interval_hours": int(interval), "discovery_lookback_days": int(lookback),
-                "discovery_max_results_per_topic": int(per_topic), "min_viral_score": int(min_score),
+                "discovery_max_results_per_topic": int(per_topic), "discovery_min_views": int(min_views), "min_viral_score": int(min_score),
                 "max_clips_per_source": int(per_source), "target_clip_seconds": int(target), "zoom_style": zoom,
                 "layout": layout, "add_hook_banner": banner, "remove_silence": rm_sil, "subtitle_words_per_line": int(wpl),
                 "require_manual_approval": manual, "auto_approve_medium_risk": auto_med, "max_daily_uploads": int(daily),

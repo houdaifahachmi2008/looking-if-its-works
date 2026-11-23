@@ -19,10 +19,12 @@ def hours_since(iso: str | None) -> float:
     return max(1.0, (datetime.now(timezone.utc) - t).total_seconds() / 3600)
 
 
-def engagement_rate(views: int, likes: int, comments: int) -> float:
+def engagement_rate(views: int, likes: int, comments: int, prior_views: int = 500) -> float:
+    """(likes + 2·comments) / views, shrunk toward 0 for small samples so a video
+    with 3 views and 1 like does not look like 33% engagement."""
     if not views:
         return 0.0
-    return (likes + 2 * comments) / views
+    return (likes + 2 * comments) / (views + prior_views)
 
 
 def discovery_score(views: int, likes: int, comments: int, published_at: str | None,

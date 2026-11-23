@@ -139,6 +139,7 @@ DEFAULT_SETTINGS: dict = {
     "discovery_interval_hours": 4,
     "discovery_lookback_days": 7,
     "discovery_max_results_per_topic": 10,
+    "discovery_min_views": 1000,      # search results below this are ignored (not trending)
     "twitch_game_names": ["Just Chatting", "Fortnite", "Minecraft"],
     # --- analysis
     "min_viral_score": 75,

@@ -76,7 +76,7 @@ def test_youtube_discovery_marks_cc_and_counts_quota(monkeypatch):
              "contentDetails": {"duration": "PT12M3S"}, "status": {"license": "creativeCommon"}},
             {"id": "v2", "snippet": {"title": "Std", "channelId": "c2", "channelTitle": "Other",
                                      "publishedAt": "2026-11-20T00:00:00Z"},
-             "statistics": {"viewCount": "1000"}, "contentDetails": {"duration": "PT5M"},
+             "statistics": {"viewCount": "1500"}, "contentDetails": {"duration": "PT5M"},
              "status": {"license": "youtube"}}]})
 
     monkeypatch.setattr(youtube.requests, "get", fake_get)
@@ -114,3 +114,9 @@ def test_local_inbox_and_sidecar_rights(tmp_path):
     s["sources_enabled"] = {"youtube": False, "twitch": False, "local_inbox": True}
     assert run_discovery(s)["processable_new"] == 2
     assert {r["rights_status"] for r in db.q("SELECT rights_status FROM sources")} == {"owned", "creative_commons"}
+
+
+def test_tiny_videos_do_not_look_viral():
+    tiny, _, er = discovery_score(3, 1, 0, "2026-11-22T00:00:00Z")
+    real, _, _ = discovery_score(200_000, 12_000, 800, "2026-11-22T00:00:00Z")
+    assert er < 0.01 and tiny < real - 30
