@@ -1,0 +1,27 @@
+# Core
+python-dotenv>=1.0
+requests>=2.31
+numpy>=1.26
+PyYAML>=6.0
+
+# Video / vision (OpenCV 4.x ships the Haar face cascades used for smart cropping)
+opencv-python-headless>=4.8,<5
+
+# Speech-to-text (local, free, CPU-friendly). Models download from Hugging Face on first use.
+faster-whisper>=1.0
+
+# YouTube Data API v3 + YouTube Analytics API + OAuth
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
+google-auth-httplib2>=0.2
+
+# Dashboard
+streamlit>=1.48
+pandas>=2.0
+plotly>=5.20
+
+# Tests
+pytest>=8.0
+
+# Optional (NOT installed by default, see README "Importing authorized remote media"):
+# yt-dlp
