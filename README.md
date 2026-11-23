@@ -108,6 +108,8 @@ Put it behind a reverse proxy with authentication if it is reachable from the in
 
 ## Configuration
 
+**Easiest:** open the dashboard → **🔌 Connections**. Log in to YouTube with one click, paste keys, and test each connection there; keys are written to your local `.env`.
+
 Secrets live in `.env` (see `.env.example`). Behaviour settings live in the database and can be edited
 in the dashboard's **Settings** page or with `python -m viralbot set <key> <json>`.
 
@@ -249,7 +251,7 @@ This is engineering guidance, not legal advice.
 ## Testing
 
 ```bash
-pytest -q          # 30 tests, about 1 minute (uses FFmpeg; no network or API keys needed)
+pytest -q          # 32 tests, about 1 minute (uses FFmpeg; no network or API keys needed)
 ```
 The suite covers the silence-removal timeline, subtitle generation, crop expressions, rights gates,
 YouTube discovery (mocked API, CC detection, quota accounting), quota exhaustion, the inbox with rights

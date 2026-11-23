@@ -419,7 +419,142 @@ def page_compliance():
         st.dataframe(by_rights, hide_index=True, width="stretch")
 
 
-PAGES = {"📊 Overview": page_overview, "📝 Review queue": page_review, "🎞 Clips": page_clips,
+def _test_result(ok: bool, msg: str):
+    (st.success if ok else st.error)(msg, icon="✅" if ok else "⚠️")
+
+
+def page_connections():
+    from viralbot import connections as cx
+    from viralbot.publishing.youtube_auth import is_authorized
+
+    st.title("Connections")
+    st.caption("Log in and paste keys here instead of editing files. Keys are stored only in your local `.env` "
+               "file (never in the database or in git). The worker picks up changes on its next cycle.")
+    e = env()
+
+    # ---------------------------------------------------------------- YouTube upload login
+    with st.container(border=True):
+        st.subheader("1 · YouTube channel (uploads & analytics)")
+        if is_authorized():
+            ok, name = cx.youtube_channel()
+            if ok:
+                st.success(f"Logged in to channel **{name}**", icon="✅")
+            else:
+                st.warning(name, icon="⚠️")
+            if st.button("Log out of YouTube"):
+                cx.logout_youtube()
+                st.rerun()
+        else:
+            secrets = e.youtube_client_secrets
+            if not secrets.exists():
+                st.info("One-time setup: in Google Cloud create an **OAuth client ID** of type **Desktop app** "
+                        "(APIs & Services → Credentials), download the JSON and upload it here. "
+                        "Keep this file private – don't share it with anyone.", icon="🔑")
+                up = st.file_uploader("client_secret.json", type=["json"])
+                if up is not None:
+                    try:
+                        data = json.loads(up.getvalue())
+                        if "installed" not in data:
+                            st.error("This is not a *Desktop app* OAuth client file (or it is a service-account key).")
+                        else:
+                            secrets.write_bytes(up.getvalue())
+                            st.success("Saved. Now click *Log in with Google*.")
+                            st.rerun()
+                    except json.JSONDecodeError:
+                        st.error("Not a valid JSON file.")
+            else:
+                st.write("Click the button: a Google login page opens in your browser. Choose the account that owns "
+                         "your YouTube channel and allow access. (\"Google hasn't verified this app\" → *Advanced* → "
+                         "*Go to app* is normal for your own project.)")
+                if st.button("🔐 Log in with Google", type="primary"):
+                    from viralbot.publishing.youtube_auth import authorize_interactive
+                    with st.spinner("Waiting for you to finish logging in in the browser tab…"):
+                        try:
+                            authorize_interactive(open_browser=True)
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"Login failed: {ex}")
+
+    # ---------------------------------------------------------------- YouTube API key
+    with st.container(border=True):
+        st.subheader("2 · YouTube API key (finding videos)")
+        st.caption(f"Current: `{cx.mask(e.youtube_api_key)}`")
+        with st.form("yt_key"):
+            k = st.text_input("YouTube Data API v3 key", type="password", placeholder="AIza…")
+            c1, c2 = st.columns(2)
+            save = c1.form_submit_button("Save & test", type="primary")
+            test = c2.form_submit_button("Test current key")
+        if save and k.strip():
+            ok, msg = cx.test_youtube_key(k.strip())
+            if ok:
+                cx.save_env_values({"YOUTUBE_API_KEY": k.strip()})
+            _test_result(ok, msg + ("" if ok else " – not saved"))
+        elif test:
+            _test_result(*cx.test_youtube_key())
+
+    # ---------------------------------------------------------------- AI
+    with st.container(border=True):
+        st.subheader("3 · AI for choosing clips & writing titles (optional)")
+        options = {"none": "No AI (free, basic)", "ollama": "Ollama – free, runs on this computer",
+                   "gemini": "Google Gemini (key)", "openai": "OpenAI API (paid credit)"}
+        current = e.active_llm if e.active_llm in options else "none"
+        choice = st.radio("Provider", list(options), format_func=options.get, index=list(options).index(current),
+                          horizontal=True)
+        if choice == "none":
+            if st.button("Use no AI", type="primary", disabled=current == "none"):
+                cx.save_env_values({"LLM_PROVIDER": "none"})
+                st.rerun()
+        elif choice == "ollama":
+            ok, models = cx.ollama_models()
+            if not ok:
+                st.warning(models, icon="⚠️")
+                st.markdown("1. Install from **ollama.com** and start it  \n2. In a terminal: `ollama pull qwen2.5:7b` "
+                            "(8 GB RAM; use `qwen2.5:3b` on weaker PCs)  \n3. Come back and refresh this page")
+            elif not models:
+                st.warning("Ollama is running but has no models yet. In a terminal run: `ollama pull qwen2.5:7b`")
+            else:
+                idx = models.index(e.ollama_model) if e.ollama_model in models else 0
+                m = st.selectbox("Model", models, index=idx)
+                if st.button("Use this model", type="primary"):
+                    cx.save_env_values({"LLM_PROVIDER": "ollama", "OLLAMA_MODEL": m})
+                    st.success(f"ViralBot now uses Ollama · {m}")
+        else:
+            field = "GEMINI_API_KEY" if choice == "gemini" else "OPENAI_API_KEY"
+            current_key = e.gemini_api_key if choice == "gemini" else e.openai_api_key
+            tester = cx.test_gemini if choice == "gemini" else cx.test_openai
+            st.caption(f"Current: `{cx.mask(current_key)}`")
+            if choice == "openai":
+                st.info("A ChatGPT subscription (Free/Go/Plus) does **not** include API access – the API needs "
+                        "separate prepaid credit on platform.openai.com.", icon="💳")
+            with st.form(f"ai_{choice}"):
+                k = st.text_input(f"{options[choice]} key", type="password")
+                c1, c2 = st.columns(2)
+                save = c1.form_submit_button("Save & test", type="primary")
+                test = c2.form_submit_button("Test current key")
+            if save and k.strip():
+                ok, msg = tester(k.strip())
+                if ok:
+                    cx.save_env_values({field: k.strip(), "LLM_PROVIDER": choice})
+                _test_result(ok, msg + ("" if ok else " – not saved"))
+            elif test:
+                _test_result(*tester())
+
+    # ---------------------------------------------------------------- Twitch
+    with st.container(border=True):
+        st.subheader("4 · Twitch (optional)")
+        st.caption(f"Current client ID: `{cx.mask(e.twitch_client_id)}` · register an app at dev.twitch.tv/console")
+        with st.form("twitch"):
+            cid = st.text_input("Client ID")
+            sec = st.text_input("Client secret", type="password")
+            save = st.form_submit_button("Save & test", type="primary")
+        if save and cid.strip() and sec.strip():
+            ok, msg = cx.test_twitch(cid.strip(), sec.strip())
+            if ok:
+                cx.save_env_values({"TWITCH_CLIENT_ID": cid.strip(), "TWITCH_CLIENT_SECRET": sec.strip()})
+            _test_result(ok, msg + ("" if ok else " – not saved"))
+
+
+PAGES = {"📊 Overview": page_overview, "🔌 Connections": page_connections, "📝 Review queue": page_review, "🎞 Clips": page_clips,
          "🔎 Sources & rights": page_sources, "📈 Analytics": page_analytics, "💸 Costs & logs": page_costs_logs,
          "⚙️ Settings": page_settings, "⚖️ Compliance": page_compliance}
 

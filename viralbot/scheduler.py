@@ -44,7 +44,19 @@ def worker_alive(max_age_s: int = 120) -> bool:
         return False
 
 
+def _reload_env() -> None:
+    """Pick up keys saved from the dashboard's Connections page without a restart."""
+    try:
+        from dotenv import load_dotenv
+        from .config import PROJECT_ROOT, reset_env
+        load_dotenv(PROJECT_ROOT / ".env", override=True)
+        reset_env()
+    except ImportError:  # pragma: no cover
+        pass
+
+
 def tick() -> dict:
+    _reload_env()
     s = db.all_settings()
     out: dict = {}
     if _due("last_discovery_at", float(s["discovery_interval_hours"])):
