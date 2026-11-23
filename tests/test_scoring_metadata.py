@@ -118,3 +118,27 @@ def test_gemini_retired_model_falls_back(monkeypatch):
     assert llm.complete_json("hi", "test") == {"ok": True}
     assert calls[-1].endswith("models/gemini-9-flash:generateContent")
     assert db.scalar("SELECT model FROM api_costs WHERE provider='gemini'", (), "") == "gemini-9-flash"
+
+
+def test_ollama_provider(monkeypatch):
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:7b")
+    from viralbot import config
+    config.reset_env()
+    assert config.env().active_llm == "ollama" and llm.available()
+    seen = {}
+
+    class R:
+        status_code = 200
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {"message": {"content": '{"clips": []}'}, "prompt_eval_count": 120, "eval_count": 30}
+
+    def post(url, timeout, json):
+        seen.update(url=url, body=json)
+        return R()
+
+    monkeypatch.setattr(llm.requests, "post", post)
+    assert llm.complete_json("score", "viral_scoring", system="sys") == {"clips": []}
+    assert seen["url"] == "http://localhost:11434/api/chat" and seen["body"]["format"] == "json"
+    assert db.scalar("SELECT cost_usd FROM api_costs WHERE provider='ollama'", (), -1) == 0

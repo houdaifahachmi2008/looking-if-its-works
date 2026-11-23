@@ -42,7 +42,9 @@ class Env:
     data_dir: Path = field(default_factory=lambda: Path(os.getenv("VIRALBOT_DATA_DIR", PROJECT_ROOT / "data")).resolve())
 
     # AI providers
-    llm_provider: str = field(default_factory=lambda: os.getenv("LLM_PROVIDER", "auto").lower())  # auto|gemini|openai|none
+    llm_provider: str = field(default_factory=lambda: os.getenv("LLM_PROVIDER", "auto").lower())  # auto|gemini|openai|ollama|none
+    ollama_host: str = field(default_factory=lambda: os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/"))
+    ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", ""))
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
     openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
@@ -98,10 +100,14 @@ class Env:
             return "gemini" if self.gemini_api_key else "none"
         if self.llm_provider == "openai":
             return "openai" if self.openai_api_key else "none"
+        if self.llm_provider == "ollama":
+            return "ollama" if self.ollama_model else "none"
         if self.gemini_api_key:
             return "gemini"
         if self.openai_api_key:
             return "openai"
+        if self.ollama_model:
+            return "ollama"
         return "none"
 
 

@@ -120,6 +120,23 @@ def complete_json(prompt: str, purpose: str, system: str = "", temperature: floa
         usage = data.get("usage", {})
         tin, tout = usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
         model = e.openai_model
+    elif provider == "ollama":
+        # Local model via Ollama (https://ollama.com): free, private, no API key.
+        msgs = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
+        try:
+            r = requests.post(f"{e.ollama_host}/api/chat", timeout=600, json={
+                "model": e.ollama_model, "messages": msgs, "stream": False, "format": "json",
+                "options": {"temperature": temperature, "num_ctx": 8192}})
+            r.raise_for_status()
+        except requests.RequestException as ex:
+            raise RuntimeError(f"Ollama not reachable at {e.ollama_host} ({ex}). Is 'ollama serve' running and "
+                               f"is the model pulled (ollama pull {e.ollama_model})?") from ex
+        data = r.json()
+        text = data.get("message", {}).get("content", "")
+        tin, tout = data.get("prompt_eval_count", 0), data.get("eval_count", 0)
+        model = e.ollama_model
+        db.record_cost(provider, model, purpose, tin + tout, "tokens", 0.0)
+        return _extract_json(text)
     else:
         raise LLMUnavailable("no LLM provider configured")
     db.record_cost(provider, model, purpose, tin + tout, "tokens", _cost(tin, tout))

@@ -127,6 +127,13 @@ python -m viralbot import /path/video.mp4 --rights owned --topic "gaming highlig
 Create a key at Google AI Studio and set `GEMINI_API_KEY`. `LLM_PROVIDER=auto` prefers Gemini, then
 OpenAI, then heuristics only. Model names and prices are configurable (`GEMINI_MODEL`, `LLM_PRICE_*`).
 
+### 2b. No Google/OpenAI key? Free local AI with Ollama
+1. Install Ollama from ollama.com (Windows, macOS, Linux) and start it.
+2. `ollama pull qwen2.5:7b` (about 4.7 GB; needs about 8 GB RAM. On weaker machines use `qwen2.5:3b`.)
+3. In `.env`: `LLM_PROVIDER=ollama` and `OLLAMA_MODEL=qwen2.5:7b`.
+
+It is free and private, but slower than Gemini (roughly 20–60 s per source video on a CPU) and a little less sharp.
+
 ### 3. YouTube Data API (discovery and uploads)
 1. Google Cloud Console: create a project and enable **YouTube Data API v3** and **YouTube Analytics API**.
 2. **Credentials → API key** goes into `YOUTUBE_API_KEY` (used for discovery).
@@ -242,7 +249,7 @@ This is engineering guidance, not legal advice.
 ## Testing
 
 ```bash
-pytest -q          # 29 tests, about 1 minute (uses FFmpeg; no network or API keys needed)
+pytest -q          # 30 tests, about 1 minute (uses FFmpeg; no network or API keys needed)
 ```
 The suite covers the silence-removal timeline, subtitle generation, crop expressions, rights gates,
 YouTube discovery (mocked API, CC detection, quota accounting), quota exhaustion, the inbox with rights
@@ -287,7 +294,7 @@ docs/ARCHITECTURE.md
 - All external APIs through mocked responses (YouTube discovery, LLM scoring, the upload client).
 
 **Not verified against live services** (no credentials in the build environment):
-- Real calls to the YouTube Data/Analytics APIs, Twitch Helix, Gemini and OpenAI. The code follows the official REST and client-library contracts, but the first live run should be private uploads.
+- Real calls to the YouTube Analytics API, Twitch Helix, Gemini, OpenAI and Ollama (YouTube Data API discovery **was** verified live). The code follows the official REST and client-library contracts, but the first live run should be private uploads.
 - faster-whisper model download and transcription (huggingface.co was not reachable). The integration follows faster-whisper's documented API, and the rest of the pipeline was tested with caption sidecars.
 - yt-dlp import.
 
